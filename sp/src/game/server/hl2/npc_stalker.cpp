@@ -52,11 +52,15 @@
 #define STALKER_LASER_RECHARGE		1
 #define STALKER_PLAYER_AGGRESSION	1
 
+
+//
+
 enum StalkerBeamPower_e
 {
 	STALKER_BEAM_LOW,
 	STALKER_BEAM_MED,
 	STALKER_BEAM_HIGH,
+	STALKER_BEAM_MALAZOR,
 };
 
 //Animation events
@@ -76,6 +80,7 @@ float g_StalkerBeamThinkTime = 0.0; //0.025;
 // Private activities.
 //=========================================================
 static int ACT_STALKER_WORK = 0;
+
 
 //=========================================================
 // Stalker schedules
@@ -110,7 +115,10 @@ enum SquadSlot_T
 
 BEGIN_DATADESC( CNPC_Stalker )
 
-	DEFINE_KEYFIELD( m_eBeamPower,		FIELD_INTEGER,	"BeamPower" ),
+	DEFINE_INPUTFUNC(FIELD_VOID, "BeamOn", BeamOn),
+	DEFINE_INPUTFUNC(FIELD_VOID, "BeamOff", BeamOff),
+	DEFINE_INPUTFUNC(FIELD_INTEGER, "SetBeamPower", SetBeamPower),
+	DEFINE_KEYFIELD(m_eBeamPower, FIELD_INTEGER, "BeamPower"),
 	DEFINE_FIELD( m_vLaserDir,			FIELD_VECTOR),
 	DEFINE_FIELD( m_vLaserTargetPos,		FIELD_POSITION_VECTOR),
 	DEFINE_FIELD( m_fBeamEndTime,			FIELD_FLOAT),
@@ -131,6 +139,10 @@ BEGIN_DATADESC( CNPC_Stalker )
 	// since "0" means don't attack and "1" means attack. There is no unique behavior beyond 1.
 	DEFINE_KEYFIELD( m_iPlayerAggression, FIELD_INTEGER, "Aggression" ),
 	DEFINE_KEYFIELD( m_bBleed, FIELD_BOOLEAN, "Bleed" ),
+	// Trying to disable the fucking beam
+	DEFINE_KEYFIELD(m_eBeamEnabled, FIELD_BOOLEAN, "BeamEnabled"),
+	// Trying to make yaw speed higher
+	DEFINE_KEYFIELD(m_eMaxYawSpeed, FIELD_BOOLEAN, "MaxYawSpeed"),
 #else
 	DEFINE_FIELD( m_iPlayerAggression, FIELD_INTEGER ),
 #endif
@@ -140,6 +152,56 @@ BEGIN_DATADESC( CNPC_Stalker )
 	DEFINE_THINKFUNC( StalkerThink ),
 
 END_DATADESC()
+
+//-----------
+//
+// DR: My inputs to enable/disable the beam. May or may not work
+//
+//-----------
+void CNPC_Stalker::BeamOn(inputdata_t& inputdata) {
+	// DR: check to make sure it's dead
+	if (GetHealth() > 0) {
+		m_eBeamEnabled = true;
+		StartAttackBeam();
+		// DR: because this shit can override dying and make a ghost laser that fires infinitely
+		SetActivity(ACT_RANGE_ATTACK1);
+	}
+}
+
+void CNPC_Stalker::BeamOff(inputdata_t& inputdata) {
+	m_eBeamEnabled = false;
+	KillAttackBeam();
+}
+
+//-----------
+//
+// DR: My inputs to set power of the beam. May or may not work
+//
+//-----------
+void CNPC_Stalker::SetBeamPower(inputdata_t& inputdata) {
+	// DR: check to make sure it's dead
+	if (GetHealth() > 0) {
+		int num = 3;
+		switch (inputdata.value.String()[0])
+		{
+
+		case '0':
+			num = STALKER_BEAM_LOW;
+			break;
+		case '1':
+			num = STALKER_BEAM_MED;
+			break;
+		case '2':
+			num = STALKER_BEAM_HIGH;
+			break;
+		case '3':
+			num = STALKER_BEAM_MALAZOR;
+			break;
+
+		}
+		m_eBeamPower = num;
+	}
+}
 
 //-----------------------------------------------------------------------------
 // Purpose:
@@ -175,7 +237,7 @@ int	CNPC_Stalker::OnTakeDamage_Alive( const CTakeDamageInfo &inputInfo )
 float CNPC_Stalker::MaxYawSpeed( void )
 {
 #ifdef HL2_EPISODIC
-	return 10.0f;
+	return m_eMaxYawSpeed;
 #else
 	switch( GetActivity() )
 	{
@@ -369,7 +431,9 @@ void CNPC_Stalker::IdleSound ( void )
 
 void CNPC_Stalker::OnScheduleChange()
 {
-	KillAttackBeam();
+	if (m_eBeamPower != STALKER_BEAM_MALAZOR) {
+		KillAttackBeam();
+	}
 
 	BaseClass::OnScheduleChange();
 }
@@ -622,9 +686,14 @@ void CNPC_Stalker::StartTask( const Task_t *pTask )
 				TaskFail(FAIL_NO_ENEMY);
 				return;
 			}
+			if (m_eBeamEnabled) {
+				StartAttackBeam();
+				SetActivity(ACT_RANGE_ATTACK1);
+			}
+			else {
+				KillAttackBeam();
+			}
 
-			StartAttackBeam();
-			SetActivity(ACT_RANGE_ATTACK1);
 			break;
 		}
 	case TASK_GET_PATH_TO_ENEMY_LOS:
@@ -710,7 +779,9 @@ void CNPC_Stalker::RunTask( const Task_t *pTask )
 		UpdateAttackBeam();
 		if ( !TaskIsRunning() || HasCondition( COND_TASK_FAILED ))
 		{
-			KillAttackBeam();
+			//if (m_eBeamPower != STALKER_BEAM_MALAZOR) {
+				KillAttackBeam();
+			//}
 		}
 		break;
 
@@ -919,8 +990,12 @@ void CNPC_Stalker::StartAttackBeam( void )
 			TaskComplete();
 			return;
 		}
-
-		m_pBeam = CBeam::BeamCreate( "sprites/laser.vmt", 2.0 );
+		if (m_eBeamPower == STALKER_BEAM_MALAZOR) {
+			m_pBeam = CBeam::BeamCreate("sprites/yellowlaser1.vmt", 96.0);
+		}
+		else {
+			m_pBeam = CBeam::BeamCreate("sprites/laser.vmt", 2.0);
+		}
 		m_pBeam->PointEntInit( tr.endpos, this );
 		m_pBeam->SetEndAttachment( STALKER_LASER_ATTACHMENT );  
 		m_pBeam->SetBrightness( 255 );
@@ -940,15 +1015,29 @@ void CNPC_Stalker::StartAttackBeam( void )
 				m_pBeam->SetColor( 255, 150, 0 );
 				m_pLightGlow = CSprite::SpriteCreate( "sprites/yellowglow1.vmt", GetAbsOrigin(), FALSE );
 				break;
+			case STALKER_BEAM_MALAZOR:
+				m_pBeam->SetNoise(0.6);
+				m_pBeam->SetColor(255, 255, 255);
+				m_pLightGlow = CSprite::SpriteCreate("sprites/yellowglow1.vmt", GetAbsOrigin(), FALSE);
+				break;
 		}
 
 		// ----------------------------
 		// Light myself in a red glow
 		// ----------------------------
-		m_pLightGlow->SetTransparency( kRenderGlow, 255, 200, 200, 0, kRenderFxNoDissipation );
-		m_pLightGlow->SetAttachment( this, 1 );
-		m_pLightGlow->SetBrightness( 255 );
-		m_pLightGlow->SetScale( 0.65 );
+		if (m_eBeamPower == STALKER_BEAM_MALAZOR) {
+			m_pLightGlow->SetTransparency(kRenderGlow, 255, 200, 200, 0, kRenderFxNoDissipation);
+			m_pLightGlow->SetAttachment(this, 1);
+			m_pLightGlow->SetBrightness(255);
+			m_pLightGlow->SetScale(3);
+		}
+		else {
+			m_pLightGlow->SetTransparency(kRenderGlow, 255, 200, 200, 0, kRenderFxNoDissipation);
+			m_pLightGlow->SetAttachment(this, 1);
+			m_pLightGlow->SetBrightness(255);
+			m_pLightGlow->SetScale(0.65);
+		}
+
 
 #if 0
 		CBaseEntity *pEnemy = GetEnemy();
@@ -996,7 +1085,9 @@ void CNPC_Stalker::StalkerThink(void)
 		const Task_t *pTask = GetTask();
 		if ( !pTask || pTask->iTask != TASK_RANGE_ATTACK1 || !TaskIsRunning() )
 		{
-			KillAttackBeam();
+			if (m_eBeamPower != STALKER_BEAM_MALAZOR) {
+				KillAttackBeam();
+			}
 		}
 	}
 	else
@@ -1077,6 +1168,9 @@ void CNPC_Stalker::DrawAttackBeam(void)
 					break;
 				case STALKER_BEAM_HIGH:
 					damage = 10;
+					break;
+				case STALKER_BEAM_MALAZOR:
+					damage = 25;
 					break;
 			}
 

@@ -799,6 +799,35 @@ CBasePlayer::~CBasePlayer( )
 	VPhysicsDestroyObject();
 }
 
+
+// DR: reenable player movement
+void CBasePlayer::unrootCharacter()
+{
+	CBaseCombatCharacter::unrootCharacter();
+	int nMask = 0;
+	nMask |= IN_SPEED;
+	nMask |= IN_JUMP;
+	nMask |= IN_FORWARD;
+	nMask |= IN_BACK;
+	nMask |= IN_MOVELEFT;
+	nMask |= IN_MOVERIGHT;
+	this->EnableButtons(nMask);
+}
+
+// DR: disable player movement
+void CBasePlayer::rootCharacter()
+{
+	CBaseCombatCharacter::rootCharacter();
+	int nMask = 0;
+	nMask |= IN_SPEED;
+	nMask |= IN_JUMP;
+	nMask |= IN_FORWARD;
+	nMask |= IN_BACK;
+	nMask |= IN_MOVELEFT;
+	nMask |= IN_MOVERIGHT;
+	this->DisableButtons(nMask);
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 // Input  : 
@@ -10357,6 +10386,8 @@ void CBasePlayer::SetBodyPitch( float flPitch )
 		SetPoseParameter( m_nBodyPitchPoseParam, flPitch );
 	}
 }
+
+
 
 void CBasePlayer::AdjustDrownDmg( int nAmount )
 {

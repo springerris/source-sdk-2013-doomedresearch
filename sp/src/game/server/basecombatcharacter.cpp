@@ -4,7 +4,10 @@
 //
 //=============================================================================//
 
+
 #include "cbase.h"
+#include "hl2_player.h"
+#include "baseentity.h"
 #include "basecombatcharacter.h"
 #include "basecombatweapon.h"
 #include "animation.h"
@@ -25,6 +28,7 @@
 #include "IEffects.h"
 #include "iservervehicle.h"
 #include "igamesystem.h"
+#include "icommandline.h"
 #include "globals.h"
 #include "physics_prop_ragdoll.h"
 #include "physics_impact_damage.h"
@@ -60,6 +64,10 @@
 #ifdef HL2_DLL
 extern int	g_interactionBarnacleVictimReleased;
 #endif //HL2_DLL
+#include <in_buttons.h>
+#include <npc_antlion.h>
+
+#include <npc_headcrab.h>
 
 extern ConVar weapon_showproficiency;
 
@@ -79,6 +87,8 @@ ConVar ai_use_visibility_cache( "ai_use_visibility_cache", "1" );
 #define ShouldUseVisibilityCache() true
 #endif
 #endif
+
+
 
 BEGIN_DATADESC( CBaseCombatCharacter )
 
@@ -106,7 +116,9 @@ BEGIN_DATADESC( CBaseCombatCharacter )
 	DEFINE_INPUT( m_ProficiencyOverride, FIELD_INTEGER, "SetProficiencyOverride"),
 #endif
 
-	DEFINE_UTLVECTOR( m_Relationship,	FIELD_EMBEDDED),
+	DEFINE_UTLVECTOR(m_Relationship,	FIELD_EMBEDDED),
+	DEFINE_UTLVECTOR(m_StatusEffectList, FIELD_EMBEDDED),
+	DEFINE_FIELD(rootState, FIELD_INTEGER),
 
 	DEFINE_AUTO_ARRAY( m_iAmmo, FIELD_INTEGER ),
 	DEFINE_AUTO_ARRAY( m_hMyWeapons, FIELD_EHANDLE ),
@@ -123,6 +135,18 @@ BEGIN_DATADESC( CBaseCombatCharacter )
 #endif
 
 #ifdef MAPBASE
+	// DR ADDITIONS
+	DEFINE_FIELD(m_flDamageTracker, FIELD_FLOAT),
+	DEFINE_FIELD(m_flDamageTrackerLimit, FIELD_FLOAT),
+	DEFINE_FIELD(m_CurrentWeaponProficiency, FIELD_INTEGER),
+	DEFINE_INPUTFUNC(FIELD_STRING, "AddStatusEffect", InputAddStatusEffect),
+	DEFINE_INPUTFUNC(FIELD_INTEGER, "CheckHavingStatusEffect", InputCheckHavingStatusEffect),
+	
+	DEFINE_THINKFUNC(StatusThink),
+	DEFINE_INPUTFUNC(FIELD_FLOAT, "GetDamageTracker", InputGetDamageTracker),
+	DEFINE_INPUTFUNC(FIELD_VOID, "ResetDamageTracker", InputResetDamageTracker),
+	DEFINE_INPUTFUNC(FIELD_INTEGER, "SetBloodColor", InputSetBloodColor),
+	//
 	DEFINE_INPUTFUNC( FIELD_INTEGER, "SetBloodColor", InputSetBloodColor ),
 
 	DEFINE_INPUTFUNC( FIELD_STRING, "SetRelationship", InputSetRelationship ),
@@ -149,51 +173,55 @@ END_DATADESC()
 ScriptHook_t	CBaseCombatCharacter::g_Hook_RelationshipType;
 ScriptHook_t	CBaseCombatCharacter::g_Hook_RelationshipPriority;
 
-BEGIN_ENT_SCRIPTDESC( CBaseCombatCharacter, CBaseFlex, "The base class shared by players and NPCs." )
+BEGIN_ENT_SCRIPTDESC(CBaseCombatCharacter, CBaseFlex, "The base class shared by players and NPCs.")
 
-	DEFINE_SCRIPTFUNC_NAMED( ScriptGetActiveWeapon, "GetActiveWeapon", "Get the character's active weapon entity." )
-	DEFINE_SCRIPTFUNC( WeaponCount, "Get the number of weapons a character possesses." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptGetWeapon, "GetWeapon", "Get a specific weapon in the character's inventory." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptGetWeaponByType, "FindWeapon", "Find a specific weapon in the character's inventory by its classname." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptGetAllWeapons, "GetAllWeapons", "Get the character's weapon inventory." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptGetCurrentWeaponProficiency, "GetCurrentWeaponProficiency", "Get the character's current proficiency (accuracy) with their current weapon." )
+DEFINE_SCRIPTFUNC_NAMED(ScriptGetActiveWeapon, "GetActiveWeapon", "Get the character's active weapon entity.")
+DEFINE_SCRIPTFUNC(WeaponCount, "Get the number of weapons a character possesses.")
+DEFINE_SCRIPTFUNC_NAMED(ScriptGetWeapon, "GetWeapon", "Get a specific weapon in the character's inventory.")
+DEFINE_SCRIPTFUNC_NAMED(ScriptGetWeaponByType, "FindWeapon", "Find a specific weapon in the character's inventory by its classname.")
+DEFINE_SCRIPTFUNC_NAMED(ScriptGetAllWeapons, "GetAllWeapons", "Get the character's weapon inventory.")
+DEFINE_SCRIPTFUNC_NAMED(ScriptGetCurrentWeaponProficiency, "GetCurrentWeaponProficiency", "Get the character's current proficiency (accuracy) with their current weapon.")
 
-	DEFINE_SCRIPTFUNC_NAMED( Weapon_ShootPosition, "ShootPosition", "Get the character's shoot position." )
-	DEFINE_SCRIPTFUNC_NAMED( Weapon_DropAll, "DropAllWeapons", "Make the character drop all of its weapons." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptEquipWeapon, "EquipWeapon", "Make the character equip the specified weapon entity. If they don't already own the weapon, they will acquire it instantly." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptDropWeapon, "DropWeapon", "Make the character drop the specified weapon entity if they own it." )
+DEFINE_SCRIPTFUNC_NAMED(Weapon_ShootPosition, "ShootPosition", "Get the character's shoot position.")
+DEFINE_SCRIPTFUNC_NAMED(Weapon_DropAll, "DropAllWeapons", "Make the character drop all of its weapons.")
+DEFINE_SCRIPTFUNC_NAMED(ScriptEquipWeapon, "EquipWeapon", "Make the character equip the specified weapon entity. If they don't already own the weapon, they will acquire it instantly.")
+DEFINE_SCRIPTFUNC_NAMED(ScriptDropWeapon, "DropWeapon", "Make the character drop the specified weapon entity if they own it.")
 
-	DEFINE_SCRIPTFUNC_NAMED( ScriptGiveAmmo, "GiveAmmo", "Gives the specified amount of the specified ammo type. The third parameter is whether or not to suppress the ammo pickup sound. Returns the amount of ammo actually given, which is 0 if the player's ammo for this type is already full." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptRemoveAmmo, "RemoveAmmo", "Removes the specified amount of the specified ammo type." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptGetAmmoCount, "GetAmmoCount", "Get the ammo count of the specified ammo type." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptSetAmmoCount, "SetAmmoCount", "Set the ammo count of the specified ammo type." )
+DEFINE_SCRIPTFUNC_NAMED(ScriptGiveAmmo, "GiveAmmo", "Gives the specified amount of the specified ammo type. The third parameter is whether or not to suppress the ammo pickup sound. Returns the amount of ammo actually given, which is 0 if the player's ammo for this type is already full.")
+DEFINE_SCRIPTFUNC_NAMED(ScriptRemoveAmmo, "RemoveAmmo", "Removes the specified amount of the specified ammo type.")
+DEFINE_SCRIPTFUNC_NAMED(ScriptGetAmmoCount, "GetAmmoCount", "Get the ammo count of the specified ammo type.")
+DEFINE_SCRIPTFUNC_NAMED(ScriptSetAmmoCount, "SetAmmoCount", "Set the ammo count of the specified ammo type.")
 
-	DEFINE_SCRIPTFUNC( DoMuzzleFlash, "Does a muzzle flash." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptGetAttackSpread, "GetAttackSpread", "Get the attack spread." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptGetSpreadBias, "GetSpreadBias", "Get the spread bias." )
+DEFINE_SCRIPTFUNC(DoMuzzleFlash, "Does a muzzle flash.")
+DEFINE_SCRIPTFUNC_NAMED(ScriptGetAttackSpread, "GetAttackSpread", "Get the attack spread.")
+DEFINE_SCRIPTFUNC_NAMED(ScriptGetSpreadBias, "GetSpreadBias", "Get the spread bias.")
 
-	DEFINE_SCRIPTFUNC_NAMED( ScriptRelationType, "GetRelationship", "Get a character's relationship to a specific entity." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptRelationPriority, "GetRelationPriority", "Get a character's relationship priority for a specific entity." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptSetRelationship, "SetRelationship", "Set a character's relationship with a specific entity." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptSetClassRelationship, "SetClassRelationship", "Set a character's relationship with a specific Classify() class." )
+DEFINE_SCRIPTFUNC_NAMED(ScriptRelationType, "GetRelationship", "Get a character's relationship to a specific entity.")
+DEFINE_SCRIPTFUNC_NAMED(ScriptRelationPriority, "GetRelationPriority", "Get a character's relationship priority for a specific entity.")
+DEFINE_SCRIPTFUNC_NAMED(ScriptSetRelationship, "SetRelationship", "Set a character's relationship with a specific entity.")
+DEFINE_SCRIPTFUNC_NAMED(ScriptSetClassRelationship, "SetClassRelationship", "Set a character's relationship with a specific Classify() class.")
 
-	DEFINE_SCRIPTFUNC_NAMED( ScriptGetVehicleEntity, "GetVehicleEntity", "Get the entity for a character's current vehicle if they're in one." )
+DEFINE_SCRIPTFUNC_NAMED(ScriptGetVehicleEntity, "GetVehicleEntity", "Get the entity for a character's current vehicle if they're in one.")
 
-	DEFINE_SCRIPTFUNC_NAMED( ScriptInViewCone, "InViewCone", "Check if the specified position is in the character's viewcone." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptEntInViewCone, "EntInViewCone", "Check if the specified entity is in the character's viewcone." )
+DEFINE_SCRIPTFUNC_NAMED(ScriptInViewCone, "InViewCone", "Check if the specified position is in the character's viewcone.")
+DEFINE_SCRIPTFUNC_NAMED(ScriptEntInViewCone, "EntInViewCone", "Check if the specified entity is in the character's viewcone.")
 
-	DEFINE_SCRIPTFUNC_NAMED( ScriptInAimCone, "InAimCone", "Check if the specified position is in the character's aim cone." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptEntInViewCone, "EntInAimCone", "Check if the specified entity is in the character's aim cone." )
+DEFINE_SCRIPTFUNC_NAMED(ScriptInAimCone, "InAimCone", "Check if the specified position is in the character's aim cone.")
+DEFINE_SCRIPTFUNC_NAMED(ScriptEntInViewCone, "EntInAimCone", "Check if the specified entity is in the character's aim cone.")
 
-	DEFINE_SCRIPTFUNC_NAMED( ScriptBodyAngles, "BodyAngles", "Get the body's angles." )
-	DEFINE_SCRIPTFUNC( BodyDirection2D, "Get the body's 2D direction." )
-	DEFINE_SCRIPTFUNC( BodyDirection3D, "Get the body's 3D direction." )
-	DEFINE_SCRIPTFUNC( HeadDirection2D, "Get the head's 2D direction." )
-	DEFINE_SCRIPTFUNC( HeadDirection3D, "Get the head's 3D direction." )
-	DEFINE_SCRIPTFUNC( EyeDirection2D, "Get the eyes' 2D direction." )
-	DEFINE_SCRIPTFUNC( EyeDirection3D, "Get the eyes' 3D direction." )
+DEFINE_SCRIPTFUNC_NAMED(ScriptBodyAngles, "BodyAngles", "Get the body's angles.")
+DEFINE_SCRIPTFUNC(BodyDirection2D, "Get the body's 2D direction.")
+DEFINE_SCRIPTFUNC(BodyDirection3D, "Get the body's 3D direction.")
+DEFINE_SCRIPTFUNC(HeadDirection2D, "Get the head's 2D direction.")
+DEFINE_SCRIPTFUNC(HeadDirection3D, "Get the head's 3D direction.")
+DEFINE_SCRIPTFUNC(EyeDirection2D, "Get the eyes' 2D direction.")
+DEFINE_SCRIPTFUNC(EyeDirection3D, "Get the eyes' 3D direction.")
 
-	DEFINE_SCRIPTFUNC( LastHitGroup, "Get the last hitgroup." )
+DEFINE_SCRIPTFUNC(LastHitGroup, "Get the last hitgroup.")
+
+DEFINE_SCRIPTFUNC(CheckHavingStatusEffect, "Check if this entity has status effect with given ID")
+DEFINE_SCRIPTFUNC(GetDamageMul, "Get this entity's damage multiplier");
+DEFINE_SCRIPTFUNC(GetDamageAdd, "Get this entity's damage addition");
 
 #ifdef GLOWS_ENABLE
 	DEFINE_SCRIPTFUNC( AddGlowEffect, "" )
@@ -224,13 +252,792 @@ BEGIN_SIMPLE_DATADESC( Relationship_t )
 	DEFINE_FIELD( classType,		FIELD_INTEGER ),
 	DEFINE_FIELD( disposition,	FIELD_INTEGER ),
 	DEFINE_FIELD( priority,	FIELD_INTEGER ),
-END_DATADESC()
+END_DATADESC();
+
+BEGIN_SIMPLE_DATADESC( AnimSpeedPrio_t )
+	DEFINE_FIELD(speed, FIELD_FLOAT),
+	DEFINE_FIELD(duration, FIELD_INTEGER),
+	DEFINE_FIELD(priority, FIELD_INTEGER),
+END_DATADESC();
+
+
+
+
 
 //-----------------------------------------------------------------------------
 // Init static variables
 //-----------------------------------------------------------------------------
 int					CBaseCombatCharacter::m_lastInteraction   = 0;
 Relationship_t**	CBaseCombatCharacter::m_DefaultRelationship	= NULL;
+
+//-----------------------------------------
+// Implementation of status effects goes here.
+//-----------------------------------------
+
+constexpr auto ARMOUR_EXCHANGE_RATE = 6;
+constexpr auto SUIT_DEFAULT_REGEN_PER_TICK = 12.5/66;
+
+void CBaseCombatCharacter::SetPlaybackRate(float rate)
+{
+	CBaseAnimating::SetPlaybackRate(rate);
+}
+
+CStatusEffect::CStatusEffect(int duration, CHandle<CBaseCombatCharacter>  receiver, CHandle<CBaseCombatCharacter>  inflictor, Status_t type) {
+	// adding a little randomization to passed global time so entities dont visually tick all at once 
+	this->rndOffset = random->RandomInt(30, 1377);
+	this->LocalCounter = LocalCounter + this->rndOffset;
+	// only list debuffs here? maybe the opposite in the future? depending on of which there is more
+	// maybe list debuffs last and do a greater than/less comparison on the enum
+	if (receiver.Get()->IsPlayer()) {
+		this->receiverIsPlayer = true;
+	}
+
+	switch (type)
+	{
+	case ST_NONE:
+		this->isBuff = false;
+		break;
+	case ST_BLEED:
+		this->isBuff = false;
+		break;
+	case ST_POISON:
+		this->isBuff = false;
+		break;
+	case ST_SLIMED:
+		this->isBuff = false;
+		break;
+	default:
+		this->isBuff = true;
+		break;
+	}
+	this->activated = false;
+	this->speedMod = 1.0;
+	// if receiver isn't player try casting receiver to CAI_BaseNPC
+	if (!receiverIsPlayer) {
+		CAI_BaseNPC* npcPtr = dynamic_cast<CAI_BaseNPC*>(receiver.Get());
+		// if cast is successful extract speed modifier
+		if (npcPtr) {
+			this->speedMod = npcPtr->m_flSpeedModifier;
+		}
+	}
+	this->receiver = receiver;
+	this->efDuration = duration;
+	this->statusType = type;
+	this->receiverIsPlayer = false;
+
+	//precaching block X
+	// no, scale set block.
+	switch (type)
+	{
+
+	case ST_ELITE_REGENERATIVE:
+		sprScale = 0.25;
+		
+		break;
+	case ST_POISON:
+		sprScale = 0.15;
+		//sprName = "particle/smokestack.vmt";
+		break;
+	case ST_SLIMED:
+		mdlScale = 5.0;
+		//mdlName = "models/spitball_large.mdl";
+		break;
+
+	}
+
+	// keep these null until needed.
+	m_pSprite = nullptr;
+	m_pModel = nullptr;
+	
+}
+
+CStatusEffect::CStatusEffect() {
+	// adding a little randomization to passed global time so entities dont visually tick all at once 
+	this->rndOffset = random->RandomInt(30, 1377);
+	this->activated = false;
+	//this->receiver.Term(); // ????
+	this->efDuration = 0;
+	this->statusType = ST_NONE;
+
+}
+
+
+
+CStatusEffect::CStatusEffect(CHandle<CBaseCombatCharacter>  receiver, Status_t type) {
+	// adding a little randomization to passed global time so entities dont visually tick all at once 
+	this->rndOffset = random->RandomInt(30, 1377);
+	this->activated = false;
+	this->efDuration = 1;
+	this->receiver = receiver;
+	this->statusType = type;
+
+
+	}
+
+// why do I have to define this?..
+CStatusEffect::CStatusEffect(const CStatusEffect &old) {
+	//*this = old; keeping this to look at what the fuck was I thinking
+	this->isBuff = old.isBuff;
+	this->activated = old.activated;
+	this->efDuration = old.efDuration;
+	this->receiver = old.receiver;
+	this->statusType = old.statusType;
+	this->statusName = old.statusName;
+	this->receiverIsPlayer = old.receiverIsPlayer;
+	this->m_pModel = old.m_pModel;
+	this->m_pSprite = old.m_pSprite;
+	this->inflictor = old.inflictor;
+}
+
+ void CStatusEffect::onActivate() {
+	if (!this->activated) {
+		CBaseCombatCharacter* recPtr = receiver.Get();
+		this->activated = true;
+		char* sprName = nullptr;
+		char* mdlName = nullptr;
+#if DEBUG
+		if (inflictor.IsValid()) {
+			DevMsg("Entity %s activating status effectID %d duration left %d inflicted by %s\n", (recPtr)->GetClassname(), this->getType(), this->efDuration, this->inflictor.Get()->GetClassname());
+		}
+		else {
+			DevMsg("Entity %s activating status effectID %d duration left %d inflicted by %s\n", (recPtr)->GetClassname(), this->getType(), this->efDuration, "null/nobody");
+		}
+#endif
+		if (recPtr) {
+			switch (this->getType())
+			{
+			case ST_ARMOUROVERCHARGE:
+
+				receiver->EmitSound("Status.Overcharge");
+				break;
+
+			case ST_ELITE_REGENERATIVE:
+				sprName = STATUS_SPRITES[1];
+				// become G R E E N.
+				recPtr->SetRenderColorB(recPtr->GetRenderColor().b / 4);
+				recPtr->SetRenderColorR(recPtr->GetRenderColor().r / 4);
+				if (recPtr->GetMaxHealth() < 100) {
+					recPtr->SetMaxHealth(recPtr->GetMaxHealth() * 2);
+					recPtr->SetHealth(recPtr->GetMaxHealth());
+				}
+				else {
+					recPtr->SetMaxHealth(recPtr->GetMaxHealth() * 1.5);
+					recPtr->SetHealth(recPtr->GetMaxHealth());
+
+				}
+
+				recPtr->SetDamageTrackerLimit(50.0);
+				efDuration = INT_MAX;
+				break;
+
+			case ST_POISON:
+				sprName = STATUS_SPRITES[0];
+				break;
+			case ST_SLIMED:
+				mdlScale = 5.0;
+				mdlName = STATUS_MODELS[0];
+				receiver->EmitSound("Status.Slimed");
+				recPtr->rootCharacter();
+				break;
+			case ST_CROSSBOW_TEMP_IMMUNITY:
+			{
+				ConVar* sk_plr_dmg_crossbow = cvar->FindVar("sk_plr_dmg_crossbow");
+				CTakeDamageInfo info(recPtr, recPtr, sk_plr_dmg_crossbow->GetInt() * 10, DMG_BLAST);
+				recPtr->TakeDamage(info);
+				recPtr->IgniteLifetime(5);
+			}
+				break;
+			case ST_HOLOGRAM:
+				{
+				receiver->dmgMul*=2;
+				receiver->AddSpawnFlags(SF_NPC_NO_WEAPON_DROP);
+				receiver->EmitSound("sfx.hologramsummon");
+				receiver->AddEFlags(EF_NOSHADOW);
+				receiver->AddEFlags(EF_NORECEIVESHADOW);
+				receiver->m_bDisableFlashlight = true;
+				color32 rgba = receiver->GetRenderColor();
+				receiver->SetRenderColor(rgba.r / 10, rgba.g * 2, rgba.b * 2, 120);
+				receiver->SetRenderMode(kRenderTransColor);
+				receiver->SetBloodColor(BLOOD_COLOR_MECH);
+				receiver->m_nRenderFX = 15;
+				efDuration = INT_MAX;
+				}
+				break;
+			default:
+				break;
+			}
+
+			if (sprName) {
+				Vector absOrigin = recPtr->GetAbsOrigin();
+				// put it slightly above origin
+				absOrigin.z = absOrigin.z + 32 * (getScaleFromSize(recPtr->GetHullType())/2);
+				m_pSprite = CSprite::SpriteCreate(sprName, absOrigin , FALSE);
+				m_pSprite->SetTransparency(kRenderWorldGlow, 100, 225, 65, 225, kRenderFxNoDissipation);
+				// if we can find a suitable attachment, put it on it
+				int attachment = 0;
+				if (attachment == 0) attachment = recPtr->LookupAttachment("eyes");
+				if (attachment == 0) attachment = recPtr->LookupAttachment("head");
+				if (attachment != 0)
+				{
+					m_pSprite->SetParent(recPtr, attachment);
+					// do not maintain offset
+					m_pSprite->SetLocalOrigin(vec3_origin);
+					m_pSprite->SetLocalAngles(vec3_angle);
+				}
+				else m_pSprite->SetParent(recPtr);
+				m_pSprite->SetBrightness(180);
+				m_pSprite->SetGlowProxySize(24*sprScale);
+				m_pSprite->SetScale(sprScale * getScaleFromSize(recPtr->GetHullType()));
+				m_pSprite->TurnOn();
+			}
+
+			if (mdlName) {
+				QAngle rndYaw = QAngle(0, random->RandomFloat(0.0f, 360.0f), 0);
+				m_pModel = (CBaseAnimating*)CreateEntityByName("prop_dynamic");;
+				if (m_pModel.IsValid())
+				{
+					m_pModel->SetModel((mdlName));
+					m_pModel->SetModelScale(mdlScale * getScaleFromSize(recPtr->GetHullType()));
+					m_pModel->SetAbsOrigin(recPtr->GetAbsOrigin());
+					m_pModel->SetAbsAngles(recPtr->GetAbsAngles());
+					m_pModel->SetParent(recPtr);
+					m_pModel->SetOwnerEntity(recPtr);
+					m_pModel->Spawn();
+					m_pModel->SetMoveType(MOVETYPE_NONE);
+					m_pModel->SetGroundEntity(NULL);
+				}
+	
+				
+			}
+		} else Warning("Receiver for statusEf %d|%d is null. Investigate.\n", this->getType(), this->efDuration);
+	}
+
+	else {
+		return;
+	}
+};
+ ConVar dr_elites_seed("dr_elites_seed", "0");
+ string_t CStatusEffect::getStatusName() {
+	 return this->statusName;
+ }
+
+ const Status_t CStatusEffect::getType() const{
+	 return this->statusType;
+ }
+
+ bool CStatusEffectLess::Less(const CStatusEffect& src1, const CStatusEffect& src2, void* pCtx) {
+	 return (src1.getType() < src2.getType());
+ }
+
+void CStatusEffect::doTick(int GlobalTime) {
+	// if receiver dead prepare for clearing
+	if (!receiver.Get()->IsAlive()) {
+		efDuration = 0;
+		return;
+	}
+
+	// when damaging don't forget all damage gets divided by 2 for some reason
+	//LocalCounter = LocalCounter + this->rndOffset;
+	this->efDuration--;
+	this->LocalCounter++;
+#if DEBUG
+	//Log("Entity %s receiving status effectID %d duration left %d\n",(receiver.Get())->GetClassname(), this->getType(), this->efDuration);
+#endif
+
+	switch (this->getType())
+	{
+		case ST_ARMOUROVERCHARGE:
+		{
+
+			if (LocalCounter%(6/STATUS_TICK_MUL) == 0)
+			{
+				if (this->receiverIsPlayer) 
+				{
+#if DEBUG
+					Log("receiver is player. doing armour exchange.\n");
+#endif
+					CHL2_Player* plr = dynamic_cast<CHL2_Player*>(receiver.Get());
+#if DEBUG
+					Log("Current suit power to be exchanged: %.6f - %d\n", plr->SuitPower_GetCurrentPercentage(), ARMOUR_EXCHANGE_RATE);
+#endif
+					if ((plr->SuitPower_GetCurrentPercentage()-ARMOUR_EXCHANGE_RATE+SUIT_DEFAULT_REGEN_PER_TICK*5) > 0) 
+					{
+						float addValue = ARMOUR_EXCHANGE_RATE;
+						int armorval = plr->ArmorValue();
+						if (armorval > 100) {
+#if DEBUG
+							Log("armor to be exchanged is higher than 100 %d.\n", armorval);
+#endif
+							// overcharging CAN go beyond 100, but approaches 200 without reaching it.
+							addValue = 0;
+							// run the function ARMOUR_EXCHANGE_RATE-1 times
+							for (int i = 0; i < ARMOUR_EXCHANGE_RATE; i++) {
+#if DEBUG
+								Log("summing %0.4f.\n", addValue);
+#endif
+								addValue = addValue+(100.0f * (100.0f / -(armorval+i)) + 100)-(100.0f * (100.0f / -(armorval+i-1)) + 100);
+							}
+						}
+#if DEBUG
+						Log("summed %0.4f\n", addValue);
+						Log("armor to be set is %0.4f\n", (armorval + addValue));
+#endif
+						plr->SetArmorValue(armorval + addValue);
+						plr->SuitPower_Drain(ARMOUR_EXCHANGE_RATE + SUIT_DEFAULT_REGEN_PER_TICK * 5);
+					}
+					else {
+						this->efDuration = 0;
+					}
+				}
+			}
+		}
+			break;
+
+		case ST_ELITE_REGENERATIVE:
+		{
+			// regenerate 6 accumulated damage per half a second
+			if (LocalCounter % (DEFAULT_TPS/2 / STATUS_TICK_MUL) == 0) 
+			{
+				int healAmount = receiver->GetHealth() + REGENERATIVE_REGEN_TICK;
+				DevMsg("Regenerative Elite class|entityindex: %s|%d attempting deferred healing %d\n", receiver->GetClassname(), receiver->entindex(),healAmount);
+				if (receiver->AddToDamageTracker(-REGENERATIVE_REGEN_TICK)) {
+					DevMsg("Regenerative Elite class|entityindex: %s|%d doing deferred healing %d\n",receiver->GetClassname(), receiver->entindex(), healAmount);
+					receiver->SetHealth(healAmount);
+				}
+
+			}
+
+			// regenerate 5% max HP per 10 seconds :)
+			
+			if (LocalCounter % (DEFAULT_TPS*5 / STATUS_TICK_MUL) == 0) 
+			{
+				if (receiver->GetHealth() < receiver->GetMaxHealth()) 
+				{	
+
+					receiver->SetHealth(receiver->GetHealth() + receiver->GetMaxHealth() * (5.0f / 100));
+				}
+
+			}
+		}
+		break;
+		case ST_BLEED:
+		{
+			// do 4% of max HP per second.
+			
+			if (LocalCounter%(DEFAULT_TPS/STATUS_TICK_MUL) == 0) {
+				Vector up;
+				receiver.Get()->GetVectors(NULL, NULL, &up);
+				UTIL_BloodSpray(receiver.Get()->GetAbsOrigin() + Vector(0, 0, 16), up, BLOOD_COLOR_RED, 8 * getScaleFromSize(receiver.Get()->GetHullType()), FX_BLOODSPRAY_ALL);
+#if DEBUG
+				Log("doing bleed.\n");
+#endif
+
+				CBaseCombatCharacter* cbccptr = receiver.Get();
+				cbccptr->EmitSound("Status.Bleed");
+				CTakeDamageInfo info(cbccptr, cbccptr,cbccptr->GetMaxHealth()*(4.0f/100), DMG_SLASH);
+				cbccptr->TakeDamage(info);
+				
+			};
+		}
+		break;
+		case ST_POISON:
+		{
+			// do 10% of current HP per 2 seconds.
+			if (LocalCounter % (66*2/STATUS_TICK_MUL) == 0) {
+#if DEBUG
+				Log("doing poison.\n");
+#endif
+				CBaseCombatCharacter* cbccptr = receiver.Get();
+				cbccptr->EmitSound("Status.Poison");
+				CTakeDamageInfo info(cbccptr, cbccptr, cbccptr->GetHealth() * (10.0f / 100), DMG_ACID);
+				cbccptr->TakeDamage(info);
+
+			};
+		}
+		break;
+		default:
+			break;
+	}
+	
+};
+
+
+void CStatusEffect::onDeactivate() {
+	CBaseCombatCharacter* recPtr = receiver.Get();
+	switch (this->getType())
+	{
+	case ST_ARMOUROVERCHARGE:
+#if DEBUG
+		Log("Entity %s activating status effectID %d duration left %d\n", (recPtr)->GetClassname(), this->getType(), this->efDuration);
+#endif
+		
+		break;
+	case ST_SLIMED:
+		receiver->EmitSound("Status.Unslimed");
+		recPtr->unrootCharacter();
+
+		break;
+	default:
+		break;
+	}
+	if (m_pSprite) {
+		UTIL_Remove(this->m_pSprite);
+	}
+	if (m_pModel.IsValid() && m_pModel.Get()) {
+		(UTIL_Remove(this->m_pModel));
+	}
+	return;
+}
+
+// get approximate scale from node Hull size for effect sprite/model
+float CStatusEffect::getScaleFromSize(Hull_t hull)
+{
+	float scale = 1.0;
+	switch (hull) 
+	{
+	case HULL_HUMAN:
+		scale = 1.0;
+		break;
+	case HULL_SMALL_CENTERED:
+		scale = 1.0;
+		break;
+	case HULL_WIDE_HUMAN:
+		scale = 1.5;
+		break;
+	case HULL_TINY:
+		scale = 0.75;
+		break;
+	case HULL_MEDIUM:
+		scale = 1.25;
+		break;
+	case HULL_LARGE:
+		scale = 2.5;
+		break;
+	case HULL_LARGE_CENTERED:
+		scale = 3;
+		break;
+	
+	case HULL_MEDIUM_TALL:
+		scale = 2.25;
+		break;
+	
+	}
+	return scale;
+}
+
+// root/unroot player (disable movement and sprint)
+void CBaseCombatCharacter::rootCharacter()
+{
+	// doing this stupid shit because almost nobody actually inherits CAI_BaseNPC methods and that's the first class to have m_flSpeedModifier
+	CAI_BaseNPC* npcPtr = dynamic_cast<CAI_BaseNPC*>(this);
+	// if cast is successful moify speed
+	if (npcPtr) {
+		npcPtr->m_flSpeedModifier = npcPtr->m_flSpeedModifier * 0.01;
+		//npcPtr->SetGravity(npcPtr->GetGravity() + 5000);
+	}
+	/*
+	if (ptr->IsPlayer()) {
+		if (CBasePlayer* plr = dynamic_cast<CBasePlayer*>(ptr)) {
+			int nMask = 0;
+			nMask |= IN_SPEED;
+			nMask |= IN_JUMP;
+			nMask |= IN_FORWARD;
+			nMask |= IN_BACK;
+			nMask |= IN_MOVELEFT;
+			nMask |= IN_MOVERIGHT;
+			//plr->SetLaggedMovementValue(0.01f);
+			plr->DisableButtons(nMask);
+		}
+	}
+	else {
+		CAI_BaseNPC* npcPtr = dynamic_cast<CAI_BaseNPC*>(ptr);
+		// if cast is successful moify speed
+		if (npcPtr) {
+			npcPtr->m_flSpeedModifier = npcPtr->m_flSpeedModifier * 0.01;
+			npcPtr->SetGravity(npcPtr->GetGravity()+5000);
+			// Disable extra movement capabilities for NPCs
+			const char* classname = npcPtr->GetClassname();
+			if (V_strcmp(classname, "npc_antlion") == 0) {
+				if (CNPC_Antlion* newPtr = dynamic_cast<CNPC_Antlion*>(npcPtr)) {
+					newPtr->m_bDisableJump = true;
+				}
+			} else			
+			// since AntlionGuard is a little BITCH that wasn't exposed in the headers I'll have to expose them myself later.
+			if (V_strcmp(classname, "npc_antlionguard") == 0) {
+				if (CNPC_AntlionGuard* newPtr = dynamic_cast<CNPC_AntlionGuard*>(npcPtr)) {
+					newPtr->ClearCondition(COND_ANTLIONGUARD_CAN_CHARGE);
+				}
+			}
+			// since Hunter is a little BITCH that wasn't exposed in the headers I'll have to expose them myself later.
+			
+			if (V_strcmp(classname, "npc_hunter") == 0) {
+				if (CNPC_Hunter* newPtr = dynamic_cast<CNPC_Hunter*>(npcPtr)) {
+					newPtr->m_flNextChargeTime += (FLT_MAX/100);
+					newPtr->SetIdealActivity(ACT_HUNTER_CHARGE_STOP);
+				}
+			}
+			if (V_stristr(classname, "npc_headcrab")) {
+				if (CBaseHeadcrab* newPtr = dynamic_cast<CBaseHeadcrab*>(npcPtr)) {
+					newPtr->m_bMidJump = true;
+
+				}
+			}
+
+		}
+	}
+	*/
+}
+
+void CBaseCombatCharacter::unrootCharacter()
+{
+
+	// doing this stupid shit because almost nobody actually inherits CAI_BaseNPC methods and that's the first class to have m_flSpeedModifier
+	CAI_BaseNPC* npcPtr = dynamic_cast<CAI_BaseNPC*>(this);
+	// if cast is successful unmodify speed
+	if (npcPtr)
+	{
+		npcPtr->m_flSpeedModifier = npcPtr->m_flSpeedModifier * 100;
+		//npcPtr->SetGravity(npcPtr->GetGravity() - 5000);
+	}
+	//if (ptr->IsPlayer()) {
+	//	if (CBasePlayer* plr = dynamic_cast<CBasePlayer*>(ptr)) {
+	//		int nMask = 0;
+	//		nMask |= IN_SPEED;
+	//		nMask |= IN_JUMP;
+	//		nMask |= IN_FORWARD;
+	//		nMask |= IN_BACK;
+	//		nMask |= IN_MOVELEFT;
+	//		nMask |= IN_MOVERIGHT;
+	//		//plr->SetLaggedMovementValue(1.0f);
+	//		plr->EnableButtons(nMask);
+	//	}
+	//} 
+	//else {
+
+
+	//		// Revert extra movement capabilities for NPCs
+	//		const char* classname = npcPtr->GetClassname();
+	//		if (V_strcmp(classname, "npc_antlion") == 0) {
+	//			if (CNPC_Antlion* newPtr = dynamic_cast<CNPC_Antlion*>(npcPtr)) {
+	//				newPtr->m_bDisableJump = false;
+	//			}
+	//		}
+	//		else
+	//		// since AntlionGuard is a little BITCH that wasn't exposed in the headers I'll have to expose them myself later.
+	//			
+	//		if (V_strcmp(classname, "npc_antlionguard") == 0) {
+	//				if (CNPC_AntlionGuard* newPtr = dynamic_cast<CNPC_AntlionGuard*>(npcPtr)) {
+	//					newPtr->SetCondition(COND_ANTLIONGUARD_CAN_CHARGE);
+	//				}
+	//			}
+	//		else
+	//		
+	//		// since Hunter is a little BITCH that wasn't exposed in the headers I'll have to expose them myself later.
+	//		if (V_strcmp(classname, "npc_hunter") == 0) {
+	//			if (CNPC_Hunter* newPtr = dynamic_cast<CNPC_Hunter*>(npcPtr)) {
+	//				newPtr->m_flNextChargeTime -= (FLT_MAX / 100);
+	//				
+	//			}
+
+	//		if (V_stristr(classname, "npc_headcrab")) {
+	//			if (CBaseHeadcrab* newPtr = dynamic_cast<CBaseHeadcrab*>(npcPtr)) {
+	//				newPtr->m_bMidJump = false;
+
+	//			}
+	//		}
+
+	//	}
+	//}
+
+}
+
+
+void CBaseCombatCharacter::addRootState(int in) {
+	int transition = 0;
+
+	int oldRootState = this->rootState;
+	if (oldRootState < 1) transition |= 1;
+
+	int newRootState = oldRootState + in;
+	if (newRootState < 1) transition |= 2;
+
+	this->rootState = newRootState;
+	switch (transition) {
+	case 1:
+		this->rootCharacter();
+		break;
+	case 2:
+		this->unrootCharacter();
+		break;
+	}
+}
+
+/*
+class CStatusEffect
+{
+public:
+	DECLARE_CLASS_NOBASE(CStatusEffect); // this class doesn't inherit from anything, what do I put as the base class?..
+	// 05.02.2026 above was previously typed when this dumbass didn't know DECLARE_CLASS isnt the only DECLARE for CLASSes
+	DECLARE_DATADESC();
+	CHandle<CBaseCombatCharacter> receiver;
+	int efDuration;
+	bool isBuff;
+	bool activated;
+	bool receiverIsPlayer;
+	int rndOffset;
+	float mdlScale;
+	float sprScale;
+	// store sprite as pointer idk Valve did it that way
+	CSprite* m_pSprite;
+	CHandle<CBaseAnimating> m_pModel;
+	CStatusEffect(int duration, CHandle<CBaseCombatCharacter>  receiver, Status_t type);
+	CStatusEffect(CHandle<CBaseCombatCharacter>  receiver, Status_t type);
+	CStatusEffect();
+	CStatusEffect(const CStatusEffect& old);
+	virtual void doTick(int GlobalTime);
+	virtual void onActivate();
+	virtual void onDeactivate();
+	static float getScaleFromSize(Hull_t hull);
+	static void rootPlayer(CBasePlayer* plr);
+	static void unrootPlayer(CBasePlayer* plr);
+	string_t getStatusName();
+	Status_t getType();
+	float speedMod;
+protected:
+	Status_t statusType;
+	string_t statusName;
+};*/
+BEGIN_DATADESC_NO_BASE(CStatusEffect)
+	DEFINE_FIELD(statusType, FIELD_INTEGER),
+	DEFINE_FIELD(rndOffset, FIELD_INTEGER),
+	DEFINE_FIELD(efDuration, FIELD_INTEGER),
+	DEFINE_FIELD(statusName, FIELD_STRING),
+	DEFINE_FIELD(activated, FIELD_BOOLEAN),
+	DEFINE_FIELD(receiver, FIELD_EHANDLE),
+	DEFINE_FIELD(inflictor, FIELD_EHANDLE),
+	DEFINE_FIELD(m_pSprite, FIELD_CLASSPTR),
+	DEFINE_FIELD(m_pModel, FIELD_EHANDLE),
+	DEFINE_FIELD(speedMod, FIELD_FLOAT),
+END_DATADESC()
+
+
+
+Status_t StatusStringToStatusEnum(char* str) {
+	if (V_strcmp(str, "ST_ELITE_REGENERATIVE") == 0) {
+		return ST_ELITE_REGENERATIVE;
+	}
+	if (V_strcmp(str, "ST_ELITE_BLAZING") == 0) {
+		return ST_ELITE_BLAZING;
+	}
+	if (V_strcmp(str,"ST_ARMOUROVERCHARGE") == 0) {
+		return ST_ARMOUROVERCHARGE;
+	}
+	if (V_strcmp(str, "ST_BLEED") == 0) {
+		return ST_BLEED;
+	}
+	if (V_strcmp(str, "ST_POISON") == 0) {
+		return ST_POISON;
+	}
+	if (V_strcmp(str, "ST_SLIMED") == 0) {
+		return ST_SLIMED;
+	}
+	for (int i = 0; i < Status_t_size; i++) {
+		if (V_strcmp(str, Status_t_mapped[i]) == 0) {
+			return static_cast<Status_t>(i);
+		}
+	}
+
+	return ST_NONE;
+}
+	
+
+
+// I can't make inheritance work with a container of sublcasses in C++. A container of references/pointers would work, but I do not want to go through the pain of serializing those.
+/*
+class CStatusEffectArmourOvercharge : public CStatusEffect {
+
+public:
+	bool isBuff = true;
+	void doTick(int GlobalTime) override {
+		CStatusEffect::doTick(GlobalTime);
+		if (GlobalTime % 5 == 0) {
+			if (receiver->IsPlayer()) {
+				CHL2_Player* plr = dynamic_cast<CHL2_Player*>(receiver.Get());
+				plr->SetArmorValue(plr->ArmorValue() + ARMOUR_EXCHANGE_RATE);
+				plr->SuitPower_Drain(ARMOUR_EXCHANGE_RATE);
+			}
+		}
+	};
+	void onActivate() override {
+		CStatusEffect::onActivate();
+		receiver->EmitSound("Status.Overcharge");
+		CStatusEffect::onActivate();
+	};
+	CStatusEffectArmourOvercharge(int duration, CHandle<CBaseCombatCharacter>  receiver, Status_t type) : CStatusEffect(duration, receiver, ST_ARMOUROVERCHARGE) {};
+	CStatusEffectArmourOvercharge(CHandle<CBaseCombatCharacter>  receiver, Status_t type) : CStatusEffect(receiver, ST_ARMOUROVERCHARGE) {};
+	CStatusEffectArmourOvercharge() : CStatusEffect() {};
+
+protected:
+	string_t statusName = MAKE_STRING("ST_ARMOUROVERCHARGE");
+};
+
+class CStatusEffectBleed : public CStatusEffect {
+public:
+	bool isBuff = false;
+	CStatusEffectBleed(int duration, CHandle<CBaseCombatCharacter>  receiver, Status_t type) : CStatusEffect(duration, receiver, ST_BLEED) {};
+	CStatusEffectBleed(CHandle<CBaseCombatCharacter>  receiver, Status_t type) : CStatusEffect(receiver, ST_BLEED) {};
+	CStatusEffectBleed() : CStatusEffect() {};
+	void doTick(int GlobalTime) override {
+		CStatusEffect::doTick(GlobalTime);
+		// do 3% of max HP per second.
+		if (GlobalTime % 60 == 0) {
+			CBaseCombatCharacter* cbccptr = receiver.Get();
+			CTakeDamageInfo info(cbccptr, cbccptr, (3.0f / cbccptr->GetMaxHealth()), DMG_SLASH);
+			cbccptr->TakeDamage(info);
+			cbccptr->EmitSound("Status.Bleed");
+		};
+	};
+
+protected:
+	string_t statusName = MAKE_STRING("ST_BLEED");
+};
+*/
+
+
+void CBaseCombatCharacter::StatusThink(void) {
+	if (!this->m_StatusEffectList.IsEmpty()) {
+
+		FOR_EACH_VEC(this->m_StatusEffectList, i) 
+		{
+			if (this->m_StatusEffectList[i].efDuration < 1) 
+			{
+				this->m_StatusEffectList[i].onDeactivate();
+				this->m_StatusEffectList.Remove(i);
+			}
+		}
+	}
+	if (!this->m_StatusEffectList.IsEmpty()) 
+	{
+		int time = gpGlobals->tickcount;
+		FOR_EACH_VEC(this->m_StatusEffectList, i)
+		{
+			CStatusEffect* ptrEf = &(this->m_StatusEffectList[i]);
+			Log("pointer to statusEf: %p\n", ptrEf);
+			if (ptrEf)
+			{
+				
+				ptrEf->doTick(time);
+			}
+			else {
+				Warning("Why the hell is the pointer of statusEf %d at %p NULL?..\n", (this->m_StatusEffectList[i]).getType(), &(this->m_StatusEffectList[i]));
+			}
+
+		}
+
+	}
+	// 1 think per tick is waaaay too much probably.
+	SetNextThink(gpGlobals->curtime + STATUS_TICK_MUL*(this->tickinterval), "StatusContext");
+}
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -412,6 +1219,42 @@ bool CBaseCombatCharacter::HasAlienGibs( void )
 #endif
 
 	return false;
+}
+
+void CBaseCombatCharacter::InputGetDamageTracker(inputdata_t& inputdata)
+{
+	inputdata.value.SetFloat(this->GetDamageTracker());
+}
+
+bool CBaseCombatCharacter::AddToDamageTracker(float dmg)
+{
+	if (m_flDamageTrackerLimit < 0) {
+		m_flDamageTracker = m_flDamageTracker + dmg;
+		return true;
+	}
+	else
+	{
+		if (m_flDamageTracker + dmg < 0) {
+			m_flDamageTracker = 0;
+			return false;
+		}
+		if (m_flDamageTracker + dmg > m_flDamageTrackerLimit) {
+			m_flDamageTracker = m_flDamageTrackerLimit;
+			return false;
+		}
+		m_flDamageTracker = m_flDamageTracker + dmg;
+		return true;
+	}
+}
+
+void CBaseCombatCharacter::SetDamageTrackerLimit(float dmg)
+{
+	m_flDamageTrackerLimit = dmg;
+}
+
+void CBaseCombatCharacter::InputResetDamageTracker(inputdata_t& inputdata)
+{
+	ResetDamageTracker();
 }
 
 
@@ -852,9 +1695,22 @@ CBaseCombatCharacter::CBaseCombatCharacter( void )
 	// necessary since in debug, we initialize vectors to NAN for debugging
 	m_HackedGunPos.Init();
 #endif
+	this->tickinterval = DEFAULT_TICK_INTERVAL;
+	// gameinterface.cpp line 861
+	// override if tick rate specified in command line
+	if (CommandLine()->CheckParm("-tickrate"))
+	{
+		float tickrate = CommandLine()->ParmValue("-tickrate", 0);
+		if (tickrate > 10)
+			tickinterval = 1.0f / tickrate;
+	}
 
+	m_StatusEffectList;
 	// Zero the damage accumulator.
 	m_flDamageAccumulator = 0.0f;
+	m_flDamageTracker = 0.0;
+	// negative means no limit
+	m_flDamageTrackerLimit = -1.0f;
 
 	// Init weapon and Ammo data
 	m_hActiveWeapon			= NULL;
@@ -885,6 +1741,9 @@ CBaseCombatCharacter::CBaseCombatCharacter( void )
 
 	m_bForceServerRagdoll = ai_force_serverside_ragdoll.GetBool();
 
+	dmgMul=1.0;
+	dmgAdd=0.0;
+
 #ifdef GLOWS_ENABLE
 	m_bGlowEnabled.Set( false );
 	m_GlowColor.GetForModify().Init( 0.76f, 0.76f, 0.76f );
@@ -899,8 +1758,25 @@ CBaseCombatCharacter::CBaseCombatCharacter( void )
 //------------------------------------------------------------------------------
 CBaseCombatCharacter::~CBaseCombatCharacter( void )
 {
-	ResetVisibilityCache( this );
+	// ~~Clear the status effect list pointers. Hopefully it's not a memory leak! :D~~
+	// You dumbass how are you gonna serialize pointers into storage if they'll point to garbage next session
+	//                                                                             
+	/*
+	if (this->m_StatusEffectList.Count() > 0) {
+		for (int i = m_StatusEffectList.Count()-1; i >= -1; i--) {
+			delete m_StatusEffectList[i];
+		}
+	}
+	*/
+	//this->m_StatusEffectList.PurgeAndDeleteElements();
+	
+ 	ResetVisibilityCache( this );
 	ClearLastKnownArea();
+}
+
+void CBaseCombatCharacter::SetStatusThink() {
+	RegisterThinkContext("StatusContext");
+	SetContextThink(&CBaseCombatCharacter::StatusThink, gpGlobals->curtime, "StatusContext");
 }
 
 //-----------------------------------------------------------------------------
@@ -922,7 +1798,13 @@ void CBaseCombatCharacter::Spawn( void )
 	// not standing on a nav area yet
 	ClearLastKnownArea();
 
+	// Will need to manually add this to some NPC families Spawn() since not all call CBaseCombatCharacter::Spawn()
+	SetStatusThink();
+
+	
+
 }
+
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -934,6 +1816,19 @@ void CBaseCombatCharacter::Precache()
 	PrecacheScriptSound( "BaseCombatCharacter.CorpseGib" );
 	PrecacheScriptSound( "BaseCombatCharacter.StopWeaponSounds" );
 	PrecacheScriptSound( "BaseCombatCharacter.AmmoPickup" );
+	
+
+	
+	// also shit the status sounds here cuz why not
+	PrecacheScriptSound("Status.Overcharge");
+	PrecacheScriptSound("Status.Bleed");
+	PrecacheScriptSound("Status.Poison");
+	PrecacheScriptSound("Status.Unslimed");
+	PrecacheScriptSound("Status.Slimed");
+
+	PrecacheScriptSound("sfx.hologramdie");
+
+
 
 	for ( int i = m_Relationship.Count() - 1; i >= 0 ; i--) 
 	{
@@ -942,6 +1837,14 @@ void CBaseCombatCharacter::Precache()
 			DevMsg( 2, "Removing relationship for lost entity\n" );
 			m_Relationship.FastRemove( i );
 		}
+	}
+
+	for (int i = 0; i <	sizeof(STATUS_SPRITES)/sizeof(char*); i++) {
+		PrecacheModel(STATUS_SPRITES[i]);
+	}
+
+	for (int i = 0; i < sizeof(STATUS_MODELS)/ sizeof(char*); i++) {
+		PrecacheModel(STATUS_MODELS[i]);
 	}
 }
 
@@ -1804,20 +2707,29 @@ void CBaseCombatCharacter::Event_Killed( const CTakeDamageInfo &info )
 	}
 
 	CBaseCombatWeapon *pDroppedWeapon = m_hActiveWeapon.Get();
+	// DR: DO NOT DROP ANYTHING OR CREATE ANYTHING IF I AM A HOLOGRAM!!
+	
+	bool amIHologram = CheckHavingStatusEffect(ST_HOLOGRAM);
+#ifdef DEBUG
+	DevMsg("AM I HOLOGRAM? %s %d\n", this->GetClassname(), amIHologram);
+#endif // DEBUG
 
+	
 	// Drop any weapon that I own
-	if ( VPhysicsGetObject() )
-	{
-		Vector weaponForce = forceVector * VPhysicsGetObject()->GetInvMass();
-		Weapon_Drop( m_hActiveWeapon, NULL, &weaponForce );
-	}
-	else
-	{
-		Weapon_Drop( m_hActiveWeapon );
-	}
+		if (VPhysicsGetObject())
+		{
+			Vector weaponForce = forceVector * VPhysicsGetObject()->GetInvMass();
+			Weapon_Drop(m_hActiveWeapon, NULL, &weaponForce);
+		}
+		else
+		{
+			Weapon_Drop(m_hActiveWeapon);
+		}
+
 	
 	// if flagged to drop a health kit
-	if (HasSpawnFlags(SF_NPC_DROP_HEALTHKIT))
+
+	if (HasSpawnFlags(SF_NPC_DROP_HEALTHKIT) && !amIHologram)
 	{
 		CBaseEntity *pItem = CBaseEntity::Create( "item_healthvial", GetAbsOrigin(), GetAbsAngles() );
 		if (pItem)
@@ -1840,42 +2752,49 @@ void CBaseCombatCharacter::Event_Killed( const CTakeDamageInfo &info )
 	SendOnKilledGameEvent( info );
 
 	// Ragdoll unless we've gibbed
-	if ( ShouldGib( info ) == false )
-	{
-		bool bRagdollCreated = false;
-		if ( (info.GetDamageType() & DMG_DISSOLVE) && CanBecomeRagdoll() )
+	if (amIHologram) {
+		DevMsg("AM I HOLOGRAM? I'M NOT, JUST DISAPPEAR. %s %d\n", this->GetClassname(), amIHologram);
+		this->EmitSound("sfx.hologramdie");
+		UTIL_Remove(this);
+	}
+	else {
+		if (ShouldGib(info) == false)
 		{
-			int nDissolveType = ENTITY_DISSOLVE_NORMAL;
-			if ( info.GetDamageType() & DMG_SHOCK )
+			bool bRagdollCreated = false;
+			if ((info.GetDamageType() & DMG_DISSOLVE) && CanBecomeRagdoll())
 			{
-				nDissolveType = ENTITY_DISSOLVE_ELECTRICAL;
-			}
+				int nDissolveType = ENTITY_DISSOLVE_NORMAL;
+				if (info.GetDamageType() & DMG_SHOCK)
+				{
+					nDissolveType = ENTITY_DISSOLVE_ELECTRICAL;
+				}
 
-			bRagdollCreated = Dissolve( NULL, gpGlobals->curtime, false, nDissolveType );
+				bRagdollCreated = Dissolve(NULL, gpGlobals->curtime, false, nDissolveType);
 
-			// Also dissolve any weapons we dropped
-			if ( pDroppedWeapon )
-			{
-				pDroppedWeapon->Dissolve( NULL, gpGlobals->curtime, false, nDissolveType );
+				// Also dissolve any weapons we dropped
+				if (pDroppedWeapon)
+				{
+					pDroppedWeapon->Dissolve(NULL, gpGlobals->curtime, false, nDissolveType);
+				}
 			}
-		}
 #ifdef HL2_DLL
 #ifdef MAPBASE
-		else if ( PlayerHasMegaPhysCannon() && GlobalEntity_GetCounter("super_phys_gun") != 1 )
+			else if (PlayerHasMegaPhysCannon() && GlobalEntity_GetCounter("super_phys_gun") != 1)
 #else
-		else if ( PlayerHasMegaPhysCannon() )
+			else if (PlayerHasMegaPhysCannon())
 #endif
-		{
-			if ( pDroppedWeapon )
 			{
-				pDroppedWeapon->Dissolve( NULL, gpGlobals->curtime, false, ENTITY_DISSOLVE_NORMAL );
+				if (pDroppedWeapon)
+				{
+					pDroppedWeapon->Dissolve(NULL, gpGlobals->curtime, false, ENTITY_DISSOLVE_NORMAL);
+				}
 			}
-		}
 #endif
 
-		if ( !bRagdollCreated && ( info.GetDamageType() & DMG_REMOVENORAGDOLL ) == 0 )
-		{
-			BecomeRagdoll( info, forceVector );
+			if (!bRagdollCreated && (info.GetDamageType() & DMG_REMOVENORAGDOLL) == 0)
+			{
+				BecomeRagdoll(info, forceVector);
+			}
 		}
 	}
 	
@@ -3011,13 +3930,22 @@ int CBaseCombatCharacter::OnTakeDamage( const CTakeDamageInfo &info )
 #endif
 		if ( m_iHealth <= 0 && g_pGameRules->Damage_ShouldGibCorpse( info.GetDamageType() ) && ShouldGib( info ) )
 		{
-			Event_Gibbed( info );
+			// DR: do not gib holograms
+			if (!this->CheckHavingStatusEffect(ST_HOLOGRAM)) {
+				Event_Gibbed(info);
+			}
 			retVal = 0;
 		}
 		return retVal;
 	}
 }
 
+// Note: since I am lazy the damage values simply get divided and subtracted with those values, and then ran through the OnTakeDamage function. Don't think about overflowing :)
+int	CBaseCombatCharacter::OnTakeDamagePure(const CTakeDamageInfo& info) {
+	CTakeDamageInfo newInfo = info;
+	newInfo.SetDamage((info.GetDamage()-dmgAdd)/dmgMul);
+	return CBaseCombatCharacter::OnTakeDamage(newInfo);
+}
 
 int CBaseCombatCharacter::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 {
@@ -3034,9 +3962,14 @@ int CBaseCombatCharacter::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 	// do the damage
 	if ( m_takedamage != DAMAGE_EVENTS_ONLY )
 	{
+		// DR: added this var so it's easier do modify damage
+		float dmg = info.GetDamage()*dmgMul+dmgAdd;
+		// damage is tracked after modification
+		AddToDamageTracker(dmg);
+
 		// Separate the fractional amount of damage from the whole
-		float flFractionalDamage = info.GetDamage() - floor( info.GetDamage() );
-		float flIntegerDamage = info.GetDamage() - flFractionalDamage;
+		float flFractionalDamage = dmg - floor(dmg);
+		float flIntegerDamage = dmg - flFractionalDamage;
 
 		// Add fractional damage to the accumulator
 		m_flDamageAccumulator += flFractionalDamage;
@@ -3549,6 +4482,100 @@ void CBaseCombatCharacter::InputSetRelationship( inputdata_t &inputdata )
 }
 #endif
 
+//-----------------------------------------------------------------------------
+// DR: status effect method implementations go here
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::InputAddStatusEffect(inputdata_t& inputdata) {
+	// by the way since we're already getting technical and I'm the only developer for this you can also add effects by their ID (enum value)
+	/*char* inputStr = (char*)inputdata.value.String();
+	char* token1;
+	char* token2;
+	char* rest = inputStr;
+	// token 1 - status name, token 2 - duration.
+	token1 = V_strtok_s(inputStr, token1, &rest);
+	token2 = V_strtok_s(inputStr, token1, &rest);
+	for (i = 0; i < strlen(token2); i++);
+	*/
+	// "I didn't feel like using strtok today." - some guy at Valve in ai_playerally.cpp
+	// same honestly.
+	Log("Entity %s trying to InputAddStatusEffect with parameters %s\n", this->GetClassname(), inputdata.value.String());
+	if (inputdata.value.StringID() != NULL_STRING) {
+		bool firstValNum = true;
+		Log("Entity %s trying to InputAddStatusEffect with parameters %s\n", this->GetClassname(), inputdata.value.String());
+		CUtlStringList vecStrings;
+		V_SplitString(inputdata.value.String(),"|",vecStrings);
+		if (vecStrings.Count() > 1) {
+
+			Log("Entity %s trying to AddStatusEffect with '%s' and '%s'\n",this->GetClassname(), vecStrings[0], vecStrings[1]);
+
+			if (V_strlen(vecStrings[0]) < 1) return;
+			if (V_strlen(vecStrings[1]) < 1) return;
+			//string_t str = MAKE_STRING(vecStrings[1]);
+			for (int i = 0; i < V_strlen(vecStrings[0]); i++) {
+				if (!V_isdigit(vecStrings[0][i])) {
+					firstValNum = false;
+					break;
+				}
+			}
+			for (int i = 0; i < V_strlen(vecStrings[1]); i++) {
+				if (!V_isdigit(vecStrings[1][i])) {
+					Warning("Entity %s trying to AddStatusEffect with '%s' and '%s' with duration having non-digit\n", this->GetClassname(), vecStrings[0], vecStrings[1]);
+					return;
+				}
+			}
+			if (firstValNum) { this->AddStatusEffect(static_cast<Status_t>(V_atoi(vecStrings[0])), V_atoi(vecStrings[1]), dynamic_cast<CBaseCombatCharacter*>(inputdata.pCaller)); }
+			else {
+				this->AddStatusEffect(StatusStringToStatusEnum(vecStrings[0]), V_atoi(vecStrings[1]),dynamic_cast<CBaseCombatCharacter*>(inputdata.pCaller));
+			}
+		}
+	}
+
+}
+
+// since I/O has 1 variable to communicate we set the parameter override to 0 if effect no found, the effect ID otherwise.
+void CBaseCombatCharacter::InputCheckHavingStatusEffect(inputdata_t& inputdata)
+{
+	if (CheckHavingStatusEffect(inputdata.value.Int())) return;
+	DevMsg("no match, return 0\n");
+	inputdata.value.SetInt(0);
+}
+
+void CBaseCombatCharacter::AddStatusEffect(Status_t ef, int dur, CHandle<CBaseCombatCharacter> inflictor) {
+
+	// dont do anything if bullseye (avoid stupid bullshit)
+	if (this->ClassMatches("npc_bullseye")) return;
+
+
+	// stack duration instead of adding a copy
+	// TODO: actually make different types of stacking
+	if (!this->m_StatusEffectList.IsEmpty()) {
+		FOR_EACH_VEC(this->m_StatusEffectList, i) {
+			if (this->m_StatusEffectList[i].getType() == ef) {
+				this->m_StatusEffectList[i].efDuration = this->m_StatusEffectList[i].efDuration + dur;
+				return;
+			}
+		}
+	}
+	CStatusEffect efObj(dur, this, inflictor, ef);
+	efObj.onActivate();
+	this->m_StatusEffectList.Insert(efObj);
+	return;
+}
+
+bool CBaseCombatCharacter::CheckHavingStatusEffect(int ef)
+{
+	// TODO: BINARY SEARCH
+	FOR_EACH_VEC(this->m_StatusEffectList, i) {
+		DevMsg("Comparing effect %d and %d\n", this->m_StatusEffectList[i].getType(), ef);
+		if (this->m_StatusEffectList[i].getType() == ef) {
+			DevMsg("Comparing effect %d and %d - they match\n", this->m_StatusEffectList[i].getType(), ef);
+			return true;
+		}
+	}
+	return false;
+}
+
+//_____________________________________________________________________________
 //-----------------------------------------------------------------------------
 // Purpose: Get shoot position of BCC at current position/orientation
 // Input  :
@@ -4954,4 +5981,5 @@ float CBaseCombatCharacter::GetTimeSinceLastInjury( int team /*= TEAM_ANY */ ) c
 
 	return never;
 }
+
 

@@ -1133,6 +1133,11 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 #ifdef MAPBASE
 	CommandLine()->AppendParm( "+r_hunkalloclightmaps", "0" );
 #endif
+	ConVar* pEliteSeed = cvar->FindVar("dr_elites_seed");
+	int eliteSeed = random->RandomInt(0,INT_MAX);
+	Log("random elite seed %d\n",eliteSeed);
+	if (pEliteSeed) pEliteSeed->SetValue(eliteSeed);
+
 
 	return true;
 }

@@ -10,6 +10,7 @@
 
 #include <limits.h>
 #include "weapon_proficiency.h"
+#include "utlsortvector.h"
 
 #ifdef _WIN32
 #pragma once
@@ -21,6 +22,8 @@
 #define POWERUP_THINK_CONTEXT	"PowerupThink"
 #endif
 
+#include "Sprite.h"
+#include "ehandle.h"
 #include "cbase.h"
 #include "baseentity.h"
 #include "baseflex.h"
@@ -77,6 +80,116 @@ enum Capability_t
 #define bits_CAP_DOORS_GROUP    (bits_CAP_AUTO_DOORS | bits_CAP_OPEN_DOORS)
 #define bits_CAP_RANGE_ATTACK_GROUP	(bits_CAP_WEAPON_RANGE_ATTACK1 | bits_CAP_WEAPON_RANGE_ATTACK2)
 #define bits_CAP_MELEE_ATTACK_GROUP	(bits_CAP_WEAPON_MELEE_ATTACK1 | bits_CAP_WEAPON_MELEE_ATTACK2)
+#define STATUS_TICK_MUL 6
+#define DEFAULT_TPS 66
+#define REGENERATIVE_REGEN_TICK 5
+
+static char* STATUS_SPRITES[2] = {"effects/bubbles.vmt","sprites/greenglow1.vmt" };
+static char* STATUS_MODELS[1] = {"models/spitball_large.mdl"};
+
+
+
+enum Status_t
+{
+	ST_NONE,
+	ST_ARMOUROVERCHARGE,
+	ST_ELITE_REGENERATIVE,
+	ST_ELITE_BLAZING,
+	ST_BLEED,
+	ST_POISON,
+	ST_SLIMED,
+	ST_CROSSBOW_TEMP_IMMUNITY,
+	ST_HOLOGRAM,
+	Status_t_size
+};
+
+static char* Status_t_mapped[Status_t_size] = {"ST_NONE","ST_ARMOUROVERCHARGE","ST_ELITE_REGENERATIVE","ST_ELITE_BLAZING","ST_BLEED","ST_POISON","ST_SLIMED","ST_CROSSBOW_TEMP_IMMUNITY","ST_HOLOGRAM"};
+
+
+
+// DR: status effects for all combat characters will be here
+class CStatusEffect
+{
+public:
+	DECLARE_CLASS_NOBASE(CStatusEffect); // this class doesn't inherit from anything, what do I put as the base class?..
+										// 05.02.2026 above was previously typed when this dumbass didn't know DECLARE_CLASS isnt the only DECLARE for CLASSes
+	DECLARE_DATADESC();
+	CHandle<CBaseCombatCharacter> receiver;
+	CHandle<CBaseCombatCharacter> inflictor;
+	
+	
+	int LocalCounter;
+	int efDuration;
+	bool isBuff;
+	bool activated;
+	bool receiverIsPlayer;
+	int rndOffset;
+	float mdlScale;
+	float sprScale;
+	// store sprite as pointer idk Valve did it that way
+	CSprite* m_pSprite;
+	CHandle<CBaseAnimating> m_pModel;
+	CStatusEffect(int duration, CHandle<CBaseCombatCharacter>  receiver, CHandle<CBaseCombatCharacter> inflictor, Status_t type);
+	CStatusEffect(CHandle<CBaseCombatCharacter>  receiver, Status_t type);
+	CStatusEffect();
+	CStatusEffect(const CStatusEffect& old);
+	virtual void doTick(int GlobalTime);
+	virtual void onActivate();
+	virtual void onDeactivate();
+	static float getScaleFromSize(Hull_t hull);
+	string_t getStatusName();
+	const Status_t getType() const;
+	float speedMod;
+protected:
+	Status_t statusType;
+	string_t statusName;
+};
+/*
+class CStatusEffectArmourOvercharge : public CStatusEffect
+{
+public:
+	CHandle<CBaseCombatCharacter> receiver;
+	int efDuration;
+	bool isBuff;
+	bool activated;
+	CStatusEffectArmourOvercharge(int duration, CHandle<CBaseCombatCharacter>  receiver, Status_t type);
+	CStatusEffectArmourOvercharge(CHandle<CBaseCombatCharacter>  receiver, Status_t type);
+	CStatusEffectArmourOvercharge();
+	virtual void doTick(int GlobalTime);
+	virtual void onActivate();
+	virtual void onDeactivate();
+protected:
+	Status_t statusType;
+	string_t statusName;
+};
+
+class CStatusEffectBleed : public CStatusEffect
+{
+public:
+	CHandle<CBaseCombatCharacter> receiver;
+	int efDuration;
+	bool isBuff;
+	bool activated;
+	CStatusEffectBleed(int duration, CHandle<CBaseCombatCharacter>  receiver, Status_t type);
+	CStatusEffectBleed(CHandle<CBaseCombatCharacter>  receiver, Status_t type);
+	CStatusEffectBleed();
+	virtual void doTick(int GlobalTime);
+	virtual void onActivate();
+	virtual void onDeactivate();
+protected:
+	Status_t statusType;
+	string_t statusName;
+};
+*/
+
+// Sorting class
+class CStatusEffectLess
+{
+public:
+	bool Less(const CStatusEffect& src1, const CStatusEffect& src2, void* pCtx);
+};
+
+//extra status stuff for CBaseCombatCharacter
 
 
 class CBaseCombatWeapon;
@@ -104,6 +217,16 @@ struct Relationship_t
 	DECLARE_SIMPLE_DATADESC();
 };
 
+struct AnimSpeedPrio_t
+{
+	float			speed;			// the modifier to which set the animation speed
+	int				priority;		// the priority for this animation modifier (i.e. freezing should override all)
+	int				duration;		// the duration for this animation modifier
+	DECLARE_SIMPLE_DATADESC();
+};
+
+
+
 //-----------------------------------------------------------------------------
 // Purpose: This should contain all of the combat entry points / functionality 
 // that are common between NPCs and players
@@ -125,9 +248,11 @@ public:
 
 public:
 
+	void StatusThink();
 	virtual void		Spawn( void );
 	virtual void		Precache();
-
+	virtual void		SetStatusThink();
+	void SetPlaybackRate(float rate);
 	virtual int			Restore( IRestore &restore );
 
 	virtual const impactdamagetable_t	&GetPhysicsImpactDamageTable( void );
@@ -273,6 +398,21 @@ public:
 	// Don't override this for characters, override the per-life-state versions below
 	virtual int				OnTakeDamage( const CTakeDamageInfo &info );
 
+	// DR addition: since we are adding damage multiplies and additions for all characters, this will deal pure damage, ignoring those values.
+	// Note: since I am lazy the damage values simply get multiplied and summed with those values, and then ran through the OnTakeDamage function. Don't think about overflowing :)
+	virtual int				OnTakeDamagePure(const CTakeDamageInfo& info);
+	// multiply all damage by this value
+	float dmgMul;
+	// add this flat value to damage
+	float dmgAdd;
+
+	// if multiple roots are applied at the same time, don't unroot until reaching 0.
+	int rootState;
+	virtual void addRootState(int in);
+	virtual void rootCharacter();
+	virtual void unrootCharacter();
+	
+
 	// Override these to control how your character takes damage in different states
 	virtual int				OnTakeDamage_Alive( const CTakeDamageInfo &info );
 	virtual int				OnTakeDamage_Dying( const CTakeDamageInfo &info );
@@ -299,6 +439,14 @@ public:
 	virtual bool			HasHumanGibs( void );
 	virtual bool			HasAlienGibs( void );
 	virtual bool			ShouldGib( const CTakeDamageInfo &info ) { return false; }	// Always ragdoll, unless specified by the leaf class
+
+	float GetDamageTracker() { return m_flDamageTracker; }
+	void InputGetDamageTracker(inputdata_t& inputdata);
+	bool AddToDamageTracker(float dmg);
+	void SubFromDamageTracker(float dmg);
+	void SetDamageTrackerLimit(float dmg);
+	void InputResetDamageTracker(inputdata_t& inputdata);
+	void ResetDamageTracker() { m_flDamageTracker = 0.0f; };
 
 	float GetDamageAccumulator() { return m_flDamageAccumulator; }
 	int	  GetDamageCount( void ) { return m_iDamageCount; }	// # of times NPC has been damaged.  used for tracking 1-shot kills.
@@ -380,6 +528,13 @@ public:
 #ifdef MAPBASE
 	void					AddRelationship( const char *pszRelationship, CBaseEntity *pActivator );
 	void					InputSetRelationship( inputdata_t &inputdata );
+	// DR: status effect method definitions go here
+	void InputAddStatusEffect(inputdata_t& inputdata);
+	void InputCheckHavingStatusEffect(inputdata_t& inputdata);
+	void AddStatusEffect(Status_t ef, int dur, CHandle<CBaseCombatCharacter> inflictor);
+	bool CheckHavingStatusEffect(int ef);
+	float GetDamageMul() { return dmgMul; }
+	float GetDamageAdd() { return dmgAdd; }
 #endif
 
 	virtual void			SetLightingOriginRelative( CBaseEntity *pLightingOrigin );
@@ -618,12 +773,22 @@ private:
 	
 	static int					m_lastInteraction;	// Last registered interaction #
 	static Relationship_t**		m_DefaultRelationship;
-
+	// HAHA WHAT IF WE JUST FUCKING ADD STATUS EFFECTS TO ALL BASECOMBATCHARACTERs WOULDNT THAT BE AWESOME
+	//  switched containter of objects to container of pointers to objects to avoid object slicing
+	//	 switched back to objects to store them persistently
+	//    switched to CUtlSortVector to sort instead of just adding.
+	CUtlSortVector<CStatusEffect,CStatusEffectLess> m_StatusEffectList;
+	//CUtlVector<int*> m_intList;
 	// attack/damage
 	int					m_LastHitGroup;			// the last body region that took damage
 	float				m_flDamageAccumulator;	// so very small amounts of damage do not get lost.
 	int					m_iDamageCount;			// # of times NPC has been damaged.  used for tracking 1-shot kills.
-	
+	float tickinterval;
+	// tracks how much damage this entity has taken, for status effects and other usage.
+	float m_flDamageTracker;
+	float m_flDamageTrackerLimit;
+
+
 	// Weapon proficiency gets calculated each time an NPC changes his weapon, and then
 	// cached off as the CurrentWeaponProficiency.
 	WeaponProficiency_t m_CurrentWeaponProficiency;
@@ -651,7 +816,9 @@ protected:
 	
 	IntervalTimer m_aliveTimer;
 
-	unsigned int m_hasBeenInjured;							// bitfield corresponding to team ID that did the injury	
+	unsigned int m_hasBeenInjured;							// bitfield corresponding to team ID that did the injury
+
+
 
 	// we do this because MAX_TEAMS is 32, which is wasteful for most games
 	enum { MAX_DAMAGE_TEAMS = 4 };

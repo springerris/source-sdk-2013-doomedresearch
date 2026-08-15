@@ -173,7 +173,8 @@ void CGameUI::Deactivate( CBaseEntity *pActivator )
 {
 	CBasePlayer *pPlayer = m_player;
 
-	AssertMsg(pPlayer, "CGameUI deactivated without a player!");
+	// this shit is a WARNING in-game. no reason to torture me with this assert every time I want to debug, because this shit has NEVER crashed my game
+	// AssertMsg(pPlayer, "CGameUI deactivated without a player!");
 
 	if (pPlayer)
 	{

@@ -46,7 +46,7 @@ public:
 	virtual void Equip( CBaseCombatCharacter *pOwner );
 	bool	Reload( void );
 
-	float	GetFireRate( void ) { return 0.075f; }	// 13.3hz
+	float	GetFireRate( void ) { return 0.062f; }	// 13.3hz
 	int		CapabilitiesGet( void ) { return bits_CAP_WEAPON_RANGE_ATTACK1; }
 	int		WeaponRangeAttack2Condition( float flDot, float flDist );
 	Activity	GetPrimaryAttackActivity( void );
@@ -479,10 +479,10 @@ void CWeaponSMG1::SecondaryAttack( void )
 	pPlayer->RemoveAmmo( 1, m_iSecondaryAmmoType );
 
 	// Can shoot again immediately
-	m_flNextPrimaryAttack = gpGlobals->curtime + 0.5f;
+	m_flNextPrimaryAttack = gpGlobals->curtime + 0.3f;
 
 	// Can blow up after a short delay (so have time to release mouse button)
-	m_flNextSecondaryAttack = gpGlobals->curtime + 1.0f;
+	m_flNextSecondaryAttack = gpGlobals->curtime + 0.5f;
 
 	// Register a muzzleflash for the AI.
 	pPlayer->SetMuzzleFlashTime( gpGlobals->curtime + 0.5 );	

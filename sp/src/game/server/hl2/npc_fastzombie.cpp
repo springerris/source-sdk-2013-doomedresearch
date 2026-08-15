@@ -1075,7 +1075,10 @@ void CFastZombie::HandleAnimEvent( animevent_t *pEvent )
 
 	if ( pEvent->event == AE_FASTZOMBIE_LEAP )
 	{
-		LeapAttack();
+		// DR: can't leap rooted
+		if ((rootState <= 0)) {
+			LeapAttack();
+		}
 		return;
 	}
 	

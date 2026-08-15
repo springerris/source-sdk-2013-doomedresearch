@@ -10,11 +10,13 @@
 #include "shake.h"
 #include "engine/IEngineSound.h"
 
+
 #if !defined( CLIENT_DLL )
 
 #include "soundent.h"
 #include "entitylist.h"
 #include "gamestats.h"
+
 
 #endif
 
@@ -280,6 +282,11 @@ void CBaseGrenade::Event_Killed( const CTakeDamageInfo &info )
 {
 	Detonate( );
 }
+
+
+
+
+
 
 #if !defined( CLIENT_DLL )
 //-----------------------------------------------------------------------------
@@ -604,7 +611,6 @@ CBaseGrenade::CBaseGrenade(void)
 
 	SetSimulatedEveryTick( true );
 };
-
 
 
 

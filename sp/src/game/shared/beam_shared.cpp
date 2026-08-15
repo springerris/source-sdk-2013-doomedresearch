@@ -6,6 +6,7 @@
 //=============================================================================//
 
 #include "cbase.h"
+
 #include "beam_shared.h"
 #include "decals.h"
 #include "model_types.h"
@@ -13,6 +14,9 @@
 #include "util_shared.h"
 
 #if !defined( CLIENT_DLL )
+#include "ai_basenpc.h"
+#include "ai_squad.h"
+
 #include "ndebugoverlay.h"
 #include "sendproxy.h"
 #else
@@ -85,10 +89,11 @@ bool IsStaticPointEntity( CBaseEntity *pEnt )
 
 	if ( !pEnt->GetModelIndex() )
 		return 1;
-
-	if ( FClassnameIs( pEnt, "info_target" ) || FClassnameIs( pEnt, "info_landmark" ) || 
+	// Jesus! Valve, you hardcode the worst shit
+	/*if (FClassnameIs(pEnt, "info_target") || FClassnameIs(pEnt, "info_landmark") ||
 		FClassnameIs( pEnt, "path_corner" ) )
 		return true;
+	*/
 
 	return false;
 }
@@ -269,7 +274,8 @@ BEGIN_DATADESC( CBeam )
 	DEFINE_FIELD( m_flFrame, FIELD_FLOAT ),
 
 	DEFINE_KEYFIELD( m_flHDRColorScale, FIELD_FLOAT, "HDRColorScale" ),
-
+	
+	DEFINE_KEYFIELD( m_flLength, FIELD_FLOAT, "laserlength"),
 	DEFINE_KEYFIELD( m_flDamage, FIELD_FLOAT, "damage" ),
 	DEFINE_FIELD( m_flFireTime, FIELD_TIME ),
 
@@ -289,6 +295,7 @@ BEGIN_DATADESC( CBeam )
 	DEFINE_INPUTFUNC( FIELD_FLOAT, "ColorRedValue", InputColorRedValue ),
 	DEFINE_INPUTFUNC( FIELD_FLOAT, "ColorGreenValue", InputColorGreenValue ),
 	DEFINE_INPUTFUNC( FIELD_FLOAT, "ColorBlueValue", InputColorBlueValue ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "Relink", InputRelink ),
 	DEFINE_INPUT( m_fSpeed, FIELD_FLOAT, "ScrollSpeed" ),
 
 	// don't save this
@@ -512,14 +519,26 @@ const Vector &CBeam::GetAbsEndPos( void ) const
 		CBaseEntity *ent = CBaseEntity::Instance( pent );
 		if ( ent )
 			return ent->GetAbsOrigin();
+		
 	}
 
 	if (!const_cast<CBeam*>(this)->GetMoveParent())
 		return m_vecEndPos.Get();
+	QAngle angles = GetAbsAngles();
+	//Vector localOrigin = GetLocalOrigin();
+	//localOrigin.x += m_flLength;
 
+#ifdef DEBUG
+	//if(gpGlobals->tickcount % 66 == 0)	DevMsg("BEAM %s %p ANGLES %f %f %f \n", this->GetEntityName().ToCStr(), this, angles.x, angles.y, angles.z);
+#endif // DEBUG
+	Vector fwd;
+	AngleVectors(angles, &fwd);
+	Vector vecFireAt;
+	//EntityToWorldSpace(localOrigin, &vecFireAt);
 	// FIXME: Cache this off?
 	static Vector vecAbsPos;
 	VectorTransform( m_vecEndPos, EntityToWorldTransform(), vecAbsPos );
+	//vecAbsPos += (fwd * m_flLength);
 	return vecAbsPos;
 }
 
@@ -811,8 +830,30 @@ void CBeam::BeamDamage( trace_t *ptr )
 
 			CTakeDamageInfo info( this, this, m_flDamage * (gpGlobals->curtime - m_flFireTime), nDamageType );
 			CalculateMeleeDamageForce( &info, dir, ptr->endpos );
-			pHit->DispatchTraceAttack( info, dir, ptr );
-			ApplyMultiDamage();
+			if (pHit != this->GetOwnerEntity()) {
+				CAI_BaseNPC* pHitBNPC = dynamic_cast<CAI_BaseNPC*>(pHit);
+				CAI_BaseNPC* pOwnerBNPC = dynamic_cast<CAI_BaseNPC*>(this->GetOwnerEntity());
+
+				if ((pHitBNPC) && (pOwnerBNPC)) {
+					CAI_Squad* sq1 = pHitBNPC->GetSquad();
+					CAI_Squad* sq2 = pOwnerBNPC->GetSquad();
+					if (sq1 && sq2) {
+						if ((V_strcmp((sq1->GetName()), (sq2->GetName())) != 0)) {
+							pHit->DispatchTraceAttack(info, dir, ptr);
+							ApplyMultiDamage();
+						}
+					}
+					else {
+						pHit->DispatchTraceAttack(info, dir, ptr);
+						ApplyMultiDamage();
+					}
+				}
+				else {
+					pHit->DispatchTraceAttack(info, dir, ptr);
+					ApplyMultiDamage();
+				}
+				
+			}
 			if ( HasSpawnFlags( SF_BEAM_DECALS ) )
 			{
 				if ( pHit->IsBSPModel() )
@@ -864,6 +905,11 @@ void CBeam::InputColorGreenValue( inputdata_t &inputdata )
 {
 	int nNewColor =clamp( FastFloatToSmallInt(inputdata.value.Float()), 0, 255 );
 	SetColor( m_clrRender->r, nNewColor, m_clrRender->b );
+}
+
+void CBeam::InputRelink(inputdata_t& inputdata)
+{
+	RelinkBeam();
 }
 
 void CBeam::InputColorBlueValue( inputdata_t &inputdata )

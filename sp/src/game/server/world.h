@@ -32,7 +32,7 @@ public:
 	virtual void DecalTrace( trace_t *pTrace, char const *decalName );
 	virtual void VPhysicsCollision( int index, gamevcollisionevent_t *pEvent ) {}
 	virtual void VPhysicsFriction( IPhysicsObject *pObject, float energy, int surfaceProps, int surfacePropsHit ) {}
-
+	virtual void ReturnToPrevTimescale();
 	inline void GetWorldBounds( Vector &vecMins, Vector &vecMaxs )
 	{
 		VectorCopy( m_WorldMins, vecMins );
@@ -59,6 +59,7 @@ public:
 	}
 
 	void InputSetChapterTitle( inputdata_t &inputdata );
+	void InputDoTimeStopFor(inputdata_t& inputdata);
 #endif
 
 #ifdef MAPBASE_VSCRIPT
@@ -75,6 +76,7 @@ private:
 	// Suppresses m_iszChapterTitle's env_message creation,
 	// allowing it to only be used for saves and RPC
 	bool m_bChapterTitleNoMessage;
+	float m_flPrevTimeScale;
 #else
 	string_t m_iszChapterTitle;
 #endif

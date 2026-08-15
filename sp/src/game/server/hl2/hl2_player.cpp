@@ -46,6 +46,7 @@
 #include "gamestats.h"
 #include "filters.h"
 #include "tier0/icommandline.h"
+#include "saverestore_utlvector.h"
 
 #ifdef HL2_EPISODIC
 #include "npc_alyx_episodic.h"
@@ -92,6 +93,7 @@ ConVar sv_autojump( "sv_autojump", "0" );
 ConVar hl2_walkspeed( "hl2_walkspeed", "150" );
 ConVar hl2_normspeed( "hl2_normspeed", "190" );
 ConVar hl2_sprintspeed( "hl2_sprintspeed", "320" );
+ConVar dr_sprintenabled("dr_sprintenabled", "0");
 
 ConVar hl2_darkness_flashlight_factor ( "hl2_darkness_flashlight_factor", "1" );
 
@@ -126,9 +128,53 @@ ConVar player_process_scene_events( "player_process_scene_events", "1", FCVAR_NO
 #endif
 
 #endif
-
+ 
 #define	FLASH_DRAIN_TIME	 1.1111	// 100 units / 90 secs
 #define	FLASH_CHARGE_TIME	 50.0f	// 100 units / 2 secs
+
+CBossEncounterDrawData::CBossEncounterDrawData() {
+	percent = 0;
+	Q_strncpy(title, "", sizeof(""));
+}
+
+CBossEncounterData::CBossEncounterData() {
+	m_strTitle = MAKE_STRING("");
+	handle = NULL;
+	m_iMaxHealth = 0;
+	m_flScale = 1.0;
+	m_iPosition = TCENTER;
+}
+
+CBossEncounterData::CBossEncounterData(string_t inTitle, EHANDLE inHandle) : CBossEncounterData()
+{
+	handle = inHandle;
+	if (CBaseEntity* ePtr = handle.Get()) {
+		m_iMaxHealth = ePtr->GetHealth();
+	}
+	m_strTitle = inTitle;
+}
+
+CBossEncounterData::CBossEncounterData(float scale, EHANDLE inHandle) : CBossEncounterData()
+{
+	handle = inHandle;
+	if (CBaseEntity* ePtr = handle.Get()) {
+		m_iMaxHealth = ePtr->GetHealth();
+	}
+	m_flScale = scale;
+
+
+}
+
+CBossEncounterData::CBossEncounterData(TITLEPOSITION position, EHANDLE inHandle) : CBossEncounterData()
+{
+	handle = inHandle;
+	if (CBaseEntity* ePtr = handle.Get()) {
+		m_iMaxHealth = ePtr->GetHealth();
+	}
+	m_iPosition = position;
+
+
+}
 
 
 //==============================================================================================
@@ -421,6 +467,14 @@ BEGIN_DATADESC( CCommandRedirect )
 END_DATADESC()
 #endif
 
+BEGIN_DATADESC_NO_BASE(CBossEncounterData)
+	DEFINE_FIELD(m_iMaxHealth, FIELD_INTEGER),
+	DEFINE_FIELD(m_iPosition, FIELD_INTEGER),
+	DEFINE_FIELD(m_flScale, FIELD_FLOAT),
+	DEFINE_FIELD(m_strTitle, FIELD_STRING),
+	DEFINE_FIELD(handle, FIELD_EHANDLE),
+END_DATADESC()
+
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
@@ -502,19 +556,31 @@ PRECACHE_REGISTER(player);
 
 CBaseEntity *FindEntityForward( CBasePlayer *pMe, bool fHull );
 
-BEGIN_SIMPLE_DATADESC( LadderMove_t )
-	DEFINE_FIELD( m_bForceLadderMove, FIELD_BOOLEAN ),
-	DEFINE_FIELD( m_bForceMount, FIELD_BOOLEAN ),
-	DEFINE_FIELD( m_flStartTime, FIELD_TIME ),
-	DEFINE_FIELD( m_flArrivalTime, FIELD_TIME ),
-	DEFINE_FIELD( m_vecGoalPosition, FIELD_POSITION_VECTOR ),
-	DEFINE_FIELD( m_vecStartPosition, FIELD_POSITION_VECTOR ),
-	DEFINE_FIELD( m_hForceLadder, FIELD_EHANDLE ),
-	DEFINE_FIELD( m_hReservedSpot, FIELD_EHANDLE ),
+BEGIN_SIMPLE_DATADESC(LadderMove_t)
+DEFINE_FIELD(m_bForceLadderMove, FIELD_BOOLEAN),
+DEFINE_FIELD(m_bForceMount, FIELD_BOOLEAN),
+DEFINE_FIELD(m_flStartTime, FIELD_TIME),
+DEFINE_FIELD(m_flArrivalTime, FIELD_TIME),
+DEFINE_FIELD(m_vecGoalPosition, FIELD_POSITION_VECTOR),
+DEFINE_FIELD(m_vecStartPosition, FIELD_POSITION_VECTOR),
+DEFINE_FIELD(m_hForceLadder, FIELD_EHANDLE),
+DEFINE_FIELD(m_hReservedSpot, FIELD_EHANDLE),
 END_DATADESC()
 
 // Global Savedata for HL2 player
-BEGIN_DATADESC( CHL2_Player )
+BEGIN_DATADESC(CHL2_Player)
+// DR additions
+
+	DEFINE_UTLVECTOR(m_bossEncounterData, FIELD_EMBEDDED),
+	//DEFINE_ARRAY(m_bossDrawData, FIELD_EMBEDDED, MAX_BOSSES_DISPLAYED),
+	DEFINE_AUTO_ARRAY(m_bossDrawDataP, FIELD_FLOAT),
+	DEFINE_AUTO_ARRAY(m_bossDrawDataScale, FIELD_FLOAT),
+	DEFINE_AUTO_ARRAY(m_bossDrawDataPos, FIELD_INTEGER),
+	DEFINE_FIELD(curSpeed, FIELD_FLOAT),
+	
+	//DEFINE_AUTO_ARRAY(m_bossDrawDataTitle, FIELD_STRING),
+	DEFINE_FIELD(m_iBossCount, FIELD_INTEGER),
+
 
 	DEFINE_FIELD( m_nControlClass, FIELD_INTEGER ),
 	DEFINE_EMBEDDED( m_HL2Local ),
@@ -565,6 +631,7 @@ BEGIN_DATADESC( CHL2_Player )
 	DEFINE_EMBEDDED( m_LowerWeaponTimer ),
 	DEFINE_EMBEDDED( m_AutoaimTimer ),
 
+	DEFINE_INPUTFUNC( FIELD_STRING, "AddToBossListWithTitle", InputAddToBossList),
 	DEFINE_INPUTFUNC( FIELD_FLOAT, "IgnoreFallDamage", InputIgnoreFallDamage ),
 	DEFINE_INPUTFUNC( FIELD_FLOAT, "IgnoreFallDamageWithoutReset", InputIgnoreFallDamageWithoutReset ),
 #ifdef MAPBASE
@@ -635,6 +702,13 @@ BEGIN_ENT_SCRIPTDESC( CHL2_Player, CBasePlayer, "The HL2 player entity." )
 	DEFINE_SCRIPTFUNC( GetProtagonistName, "Gets the player's protagonist name." )
 	DEFINE_SCRIPTFUNC( SetProtagonist, "Sets the player's protagonist entry." )
 
+
+	// DR: the movement buffer
+
+	DEFINE_SCRIPTFUNC( GetMaxVerticalVel, "Gives max vertical velocity from the movement buffer.")
+	DEFINE_SCRIPTFUNC( GetMaxHorizontalVel, "Gives max vertical velocity from the movement buffer.")
+	DEFINE_SCRIPTFUNC( GetMaxOverallVel, "Gives max vertical velocity from the movement buffer.")
+
 #ifdef SP_ANIM_STATE
 	DEFINE_SCRIPTFUNC( AddAnimStateLayer, "Adds a custom sequence index as a misc. layer for the singleplayer anim state, wtih parameters for blending in/out, setting the playback rate, holding the animation at the end, and only playing when the player is still." )
 #endif
@@ -644,10 +718,17 @@ END_SCRIPTDESC();
 
 CHL2_Player::CHL2_Player()
 {
+
+	memset(m_velBuffer, 0, sizeof(Vector) * VELBUFFER_LENGTH);
+
+	m_vecMaxHor = m_velBuffer[0];
+	m_vecMaxVer = m_velBuffer[0];
+	m_vecMaxOverall = m_velBuffer[0];
+
 	m_nNumMissPositions	= 0;
 	m_pPlayerAISquad = 0;
 	m_bSprintEnabled = true;
-
+	
 	m_flArmorReductionTime = 0.0f;
 	m_iArmorReductionFrom = 0;
 
@@ -684,12 +765,31 @@ CSuitPowerDevice SuitDeviceCustom[] =
 };
 #endif
 
+// avoid link error because I can't be bothered to separate SendProxy_String_tToString from env_screenoverlay.cpp into a header
+void SendProxy_String_tToString_Again(const SendProp* pProp, const void* pStruct, const void* pData, DVariant* pOut, int iElement, int objectID)
+{
+	string_t* pString = (string_t*)pData;
+	pOut->m_pString = (char*)STRING(*pString);
+}
+
 
 IMPLEMENT_SERVERCLASS_ST(CHL2_Player, DT_HL2_Player)
-	SendPropDataTable(SENDINFO_DT(m_HL2Local), &REFERENCE_SEND_TABLE(DT_HL2Local), SendProxy_SendLocalDataTable),
-	SendPropBool( SENDINFO(m_fIsSprinting) ),
+SendPropDataTable(SENDINFO_DT(m_HL2Local), &REFERENCE_SEND_TABLE(DT_HL2Local), SendProxy_SendLocalDataTable),
+SendPropBool(SENDINFO(m_fIsSprinting)),
 #ifdef MAPBASE
-	SendPropInt( SENDINFO( m_nProtagonistIndex ), 8, SPROP_UNSIGNED ),
+SendPropInt(SENDINFO(m_nProtagonistIndex), 8, SPROP_UNSIGNED),
+//SendPropArray3(SENDINFO_ARRAY3(m_bossDrawData), SendPropDataTable(SENDINFO_DT(m_bossDrawData), &REFERENCE_SEND_TABLE(DT_HL2_Player), SendProxy_SendLocalDataTable)),
+SendPropInt(SENDINFO(m_iBossCount), 0, SPROP_UNSIGNED),
+SendPropArray3(SENDINFO_ARRAY3(m_bossDrawDataP), SendPropFloat(SENDINFO_ARRAY(m_bossDrawDataP))),
+SendPropArray3(SENDINFO_ARRAY3(m_bossDrawDataScale), SendPropFloat(SENDINFO_ARRAY(m_bossDrawDataScale))),
+SendPropArray3(SENDINFO_ARRAY3(m_bossDrawDataPos), SendPropInt(SENDINFO_ARRAY(m_bossDrawDataPos))),
+//SendPropArray(SendPropStringT(SENDINFO_ARRAY(m_bossDrawDataTitle)), m_bossDrawDataTitle),
+SendPropArray(SendPropString(SENDINFO_ARRAY(m_bossDrawDataTitle), 0, SendProxy_String_tToString_Again), m_bossDrawDataTitle),
+SendPropString(SENDINFO(m_bossDrawDataTitle1)),
+SendPropString(SENDINFO(m_bossDrawDataTitle2)),
+SendPropString(SENDINFO(m_bossDrawDataTitle3)),
+SendPropString(SENDINFO(m_bossDrawDataTitle4)),
+
 #endif
 #ifdef SP_ANIM_STATE
 	SendPropFloat( SENDINFO(m_flAnimRenderYaw), 0, SPROP_NOSCALE ),
@@ -837,6 +937,231 @@ void CHL2_Player::HandleArmorReduction( void )
 //-----------------------------------------------------------------------------
 void CHL2_Player::PreThink(void)
 {
+	
+#ifdef DEBUG
+	//DevMsg("current player speed: %.8f\n", curSpeed);
+#endif // DEBUG
+	// DR: update speed. Unstick projectiles if we're fast enough.
+	// ADD AN ACCUMULATOR because per-tick changes are TINY 
+	Vector curVel = this->GetAbsVelocity();
+	float newSpeed = curVel.Length();
+#ifdef DEBUG
+	//DevMsg("new player speed: %.8f\n", newSpeed);
+#endif // DEBUG
+	Vector newPos = GetAbsOrigin();
+	bool newState = true;
+	if (curSpeed < newSpeed) {
+		newState = true;
+	}
+	else {
+		newState = false;
+	}
+	if (newState != m_bIsSpeedRising) {
+
+		accumSpeed = curSpeed;
+		m_bIsSpeedRising = newState;
+
+#ifdef DEBUG
+		DevMsg("State switched, resetting accumulator: %.8f\n", accumSpeed);
+#endif // DEBUG
+	}
+
+	accumSpeed += abs(curSpeed - newSpeed);
+#ifdef DEBUG
+	//DevMsg("new player accumulated speed: %.8f\n", accumSpeed);
+#endif // DEBUG
+
+	if (accumSpeed > HIGH_VEL+300 && (m_vPosition != newPos)) {
+		for (CBaseEntity* pChild = this->FirstMoveChild(); pChild; pChild = pChild->NextMovePeer())
+		{
+			// DR: hunters aren't exposed via headers and i'm too lazy. classname check will do
+			if (FClassnameIs(pChild, "hunter_flechette")) {
+#ifdef DEBUG
+				DevMsg("unstuck flechette from player\n");
+#endif // DEBUG
+				pChild->SetParent(NULL);
+				pChild->SetMoveType(MOVETYPE_FLYGRAVITY);
+				pChild->SetGravity(1.0);
+				pChild->SetAbsVelocity(Vector(0, 0, -100));
+				pChild->SetSolid(SOLID_BBOX);
+			}
+
+			if (FClassnameIs(pChild, "npc_grenade_frag")) {
+#ifdef DEBUG
+				DevMsg("unstuck grenade from player\n");
+#endif // DEBUG
+				pChild->SetParent(NULL);
+				pChild->SetMoveType(MOVETYPE_VPHYSICS);
+				pChild->SetSolid(SOLID_VPHYSICS);
+			}
+
+
+		}
+
+	}
+	curSpeed = newSpeed;
+	m_vPosition = newPos;
+
+	/*
+	public void put(T value) {
+		boolean resetMax = false;
+
+		if (geq(value, this.max)) {
+			// Incoming value is the new max
+			this.max = value;
+		} else if (eq(this.get(0), this.max)) {
+			// Shifted out value is the old max
+			resetMax = true;
+		}
+
+		// Shift the array, add new value to end
+		System.arraycopy(this.array, 1, this.array, 0, COUNT - 1);
+		this.array[COUNT - 1] = value;
+
+		// Calculate the new maximum if necessary
+		if (resetMax) {
+			T max = value;
+			for (int i = 0; i < COUNT - 1; i++) {
+				T next = this.get(i);
+				if (geq(next, max)) max = next;
+			}
+			this.max = max;
+		}
+	}
+
+	*/
+
+
+	// DR: update movement buffer
+	bool resetMaxH = false;
+	bool resetMaxV = false;
+	bool resetMaxO = false;
+	if (curVel.Length2D() >= m_vecMaxHor.Length2D()) {
+		m_vecMaxHor = curVel;
+	}
+	else if (curVel.Length2D() == m_vecMaxHor.Length2D()) { resetMaxH = true; }
+
+	if (abs(curVel.z) >= abs(m_vecMaxVer.z)) {
+		m_vecMaxVer = curVel;
+		
+	} else if (abs(curVel.z) == abs(m_vecMaxVer.z)) { resetMaxV = true; }
+
+	if (curVel.Length() >= m_vecMaxOverall.Length()) {
+		m_vecMaxOverall = curVel;
+		
+	}
+	else if (curVel.Length() == m_vecMaxOverall.Length()) { resetMaxO = true; }
+	
+	memmove(m_velBuffer, &m_velBuffer[1], (VELBUFFER_LENGTH - 1) * sizeof(Vector));
+	m_velBuffer[VELBUFFER_LENGTH - 1] = curVel;
+
+	if (resetMaxH) {
+		Vector newMax = curVel;
+		for (int i = 0; i < VELBUFFER_LENGTH - 1; i++) {
+			if (m_velBuffer[i].Length2D() > curVel.Length2D()) { newMax = m_velBuffer[i]; }
+		}
+		m_vecMaxHor = newMax;
+	}
+
+	if (resetMaxH) {
+		Vector newMax = curVel;
+		for (int i = 0; i < VELBUFFER_LENGTH - 1; i++) {
+			if (m_velBuffer[i].Length2D() > curVel.Length2D()) { newMax = m_velBuffer[i]; }
+		}
+		m_vecMaxVer = newMax;
+	}
+
+	if (resetMaxO) {
+		Vector newMax = curVel;
+		for (int i = 0; i < VELBUFFER_LENGTH - 1; i++) {
+			if (m_velBuffer[i].Length() > curVel.Length()) { newMax = m_velBuffer[i]; }
+		}
+		m_vecMaxOverall = newMax;
+	}
+
+	
+
+
+	// DR: check bosses
+	if (m_bossEncounterData.IsEmpty() || m_bossEncounterData.Count() == 0) {
+		
+		m_iBossCount = 0;
+#ifdef DEBUG
+		if (gpGlobals->tickcount % 66 == 0)  DevMsg("boss list empty, sending bosscount %d \n", m_iBossCount.Get());
+#endif // DEBUG
+
+		
+	} 
+	else 
+	{
+		for (int i = 0; i < m_bossEncounterData.Count(); i++) 
+		{
+			FOR_EACH_VEC(this->m_bossEncounterData, i)
+			{
+				if (!this->m_bossEncounterData[i].handle.IsValid() || !this->m_bossEncounterData[i].handle.Get())
+				{
+					this->m_bossEncounterData.Remove(i);
+				}
+			}
+		}
+		int k = 0;
+		for (int i = 0; i < m_bossEncounterData.Count(); i++) 
+		{
+			CBaseEntity* ePtr = m_bossEncounterData[i].handle.Get();
+				if (ePtr) {
+					if (k < MAX_BOSSES_DISPLAYED) {
+						float precent = ePtr->GetHealth()*1.0f / m_bossEncounterData[i].m_iMaxHealth*1.0f;
+						char cutoffstr[64];
+						Q_strncpy(cutoffstr, m_bossEncounterData[i].m_strTitle.ToCStr(), sizeof(cutoffstr));
+						if (gpGlobals->tickcount % 66 == 0)  DevMsg("boss list NOT empty, showing copied title %s \n", cutoffstr);
+						switch (k)
+						{
+						case 0:
+							Q_strncpy(m_bossDrawDataTitle1.GetForModify(),  cutoffstr,  sizeof(cutoffstr));
+							if (gpGlobals->tickcount % 66 == 0)  DevMsg("boss list NOT empty, showing title1 %s \n", m_bossDrawDataTitle1.Get());
+							break;
+						case 1:
+							Q_strncpy(m_bossDrawDataTitle2.GetForModify(), cutoffstr, sizeof(cutoffstr));
+							if (gpGlobals->tickcount % 66 == 0)  DevMsg("boss list NOT empty, showing title2 %s \n", m_bossDrawDataTitle2.Get());
+							break;
+						case 2:
+							Q_strncpy(m_bossDrawDataTitle3.GetForModify(), cutoffstr, sizeof(cutoffstr));
+							if (gpGlobals->tickcount % 66 == 0)  DevMsg("boss list NOT empty, showing title3 %s \n", m_bossDrawDataTitle3.Get());
+							break;
+						case 3:
+							Q_strncpy(m_bossDrawDataTitle4.GetForModify(), cutoffstr, sizeof(cutoffstr));
+							if (gpGlobals->tickcount % 66 == 0)  DevMsg("boss list NOT empty, showing title4 %s \n", m_bossDrawDataTitle4.Get());
+							break;
+						}
+						//Q_strcpy(m_bossDrawData.GetForModify(k).title, cutoffstr);
+						//m_bossDrawData.GetForModify(k).percent = precent;
+#ifdef DEBUG
+						if (gpGlobals->tickcount % 66 == 0)  DevMsg("boss list NOT empty, sending percent %.6f \n", precent);
+						if (gpGlobals->tickcount % 66 == 0)  DevMsg("boss list NOT empty, showing title %s \n", cutoffstr);
+#endif // DEBUG			
+						m_bossDrawDataTitle.GetForModify(k) = MAKE_STRING(cutoffstr);
+						
+#ifdef DEBUG
+						if (gpGlobals->tickcount % 66 == 0)  DevMsg("boss list NOT empty, sending title %s \n", m_bossDrawDataTitle.Get(k).ToCStr());
+#endif // DEBUG
+						if (gpGlobals->tickcount % 66 == 0)  DevMsg("boss list NOT empty, sending scale %.6f \n", precent);
+						if (gpGlobals->tickcount % 66 == 0)  DevMsg("boss list NOT empty, sending percent %.6f \n", precent);
+						if (gpGlobals->tickcount % 66 == 0)  DevMsg("boss list NOT empty, sending position %d \n", m_bossEncounterData[i].m_iPosition);
+						m_bossDrawDataP.GetForModify(k) = precent;
+						m_bossDrawDataPos.GetForModify(k) = m_bossEncounterData[i].m_iPosition;
+						m_bossDrawDataScale.GetForModify(k) = m_bossEncounterData[i].m_flScale;
+						k++;
+					}
+				}
+		}
+
+		m_iBossCount = k;
+#ifdef DEBUG
+		if (gpGlobals->tickcount % 66 == 0)  DevMsg("boss list NOT empty, sending bosscount %d \n", m_iBossCount.Get());
+#endif // DEBUG
+		
+	}
+
 	if ( player_showpredictedposition.GetBool() )
 	{
 		Vector	predPos;
@@ -1542,8 +1867,11 @@ void CHL2_Player::Spawn(void)
 #endif
 #endif
 #endif
-
+	
 	BaseClass::Spawn();
+	curSpeed = 0.0;
+	m_bIsSpeedRising = false;
+	m_vPosition = GetAbsOrigin();
 
 #ifdef MAPBASE
 	// Ported from CHL2MP_Player. Fixes issues with respawning players in SP
@@ -1590,6 +1918,108 @@ void CHL2_Player::Spawn(void)
 	GetPlayerProxy();
 
 	SetFlashlightPowerDrainScale( 1.0f );
+}
+
+
+
+void CHL2_Player::InputAddToBossList(inputdata_t& inputdata)
+{
+#ifdef DEBUG
+	DevMsg("INPUT REQUEST TO ADD TO BOSSLIST: %s, %s \n", inputdata.pCaller->GetEntityNameAsCStr(), inputdata.value.String());
+#endif // DEBUG
+	AddToBossList(inputdata.pCaller,inputdata.value.String());
+}
+
+void CHL2_Player::AddToBossList(EHANDLE handle,const char* title)
+{
+	if (!handle.IsValid()) {
+		return;
+	}
+	#ifdef DEBUG
+	for (int i = 0; i < m_bossEncounterData.Count(); i++) {
+
+		DevMsg("HERE IS THE BOSSLIST[%d]: %s, %s, %d \n", i, m_bossEncounterData[i].handle.Get()->GetEntityNameAsCStr(), m_bossEncounterData[i].m_strTitle.ToCStr(), m_bossEncounterData[i].m_iMaxHealth);
+	}
+	#endif // DEBUG
+	if (m_bossEncounterData.IsEmpty() || m_bossEncounterData.Count() == 0) {
+		m_bossEncounterData.AddToTail(CBossEncounterData(MAKE_STRING(title), handle));
+		return;
+	}
+	for (int i = 0; i < m_bossEncounterData.Count(); i++) {
+#ifdef DEBUG
+		DevMsg("HERE IS THE BOSSLIST[%d]: %s, %s, %d \n",i, m_bossEncounterData[i].handle.Get()->GetEntityNameAsCStr(), m_bossEncounterData[i].m_strTitle.ToCStr(), m_bossEncounterData[i].m_iMaxHealth);
+		DevMsg("Comparing handles: m_bossEncounterData[i].handle.Get() == handle.Get() %p == %p? \n", m_bossEncounterData[i].handle.Get(),handle.Get());
+#endif // DEBUG
+		// if we're the same handle try changing the title instead 
+		if (m_bossEncounterData[i].handle.Get() == handle.Get()) {
+			if (V_strcmp(m_bossEncounterData[i].m_strTitle.ToCStr(), title) != 0) {
+				m_bossEncounterData[i].m_strTitle = MAKE_STRING(title);
+				
+			}
+			return;
+		}
+		else {
+			DevMsg("Handles %p == %p? do not match, will add \n", m_bossEncounterData[i].handle.Get(), handle.Get());
+			
+		}
+	}
+	m_bossEncounterData.AddToTail(CBossEncounterData(MAKE_STRING(title), handle));
+}
+
+void CHL2_Player::AddToBossList(EHANDLE handle, TITLEPOSITION position)
+{
+	if (!handle.IsValid()) {
+		return;
+	}
+
+	if (m_bossEncounterData.IsEmpty() || m_bossEncounterData.Count() == 0) {
+		m_bossEncounterData.AddToTail(CBossEncounterData(static_cast<TITLEPOSITION>(position), handle));
+		return;
+	}
+	for (int i = 0; i < m_bossEncounterData.Count(); i++) {
+#ifdef DEBUG
+		DevMsg("HERE IS THE BOSSLIST[%d]: %s, %s, %d \n", i, m_bossEncounterData[i].handle.Get()->GetEntityNameAsCStr(), m_bossEncounterData[i].m_strTitle.ToCStr(), m_bossEncounterData[i].m_iMaxHealth);
+		DevMsg("Comparing handles: m_bossEncounterData[i].handle.Get() == handle.Get() %p == %p? \n", m_bossEncounterData[i].handle.Get(), handle.Get());
+#endif // DEBUG
+		// if we're the same handle try changing the title instead 
+		if (m_bossEncounterData[i].handle.Get() == handle.Get()) {
+			m_bossEncounterData[i].m_iPosition = static_cast<TITLEPOSITION>(position);
+			return;
+		}
+		else {
+			DevMsg("Handles %p == %p? do not match, will add \n", m_bossEncounterData[i].handle.Get(), handle.Get());
+
+		}
+	}
+	m_bossEncounterData.AddToTail(CBossEncounterData(position, handle));
+}
+
+void CHL2_Player::AddToBossList(EHANDLE handle, const float scale)
+{
+	if (!handle.IsValid()) {
+		return;
+	}
+
+	if (m_bossEncounterData.IsEmpty() || m_bossEncounterData.Count() == 0) {
+		m_bossEncounterData.AddToTail(CBossEncounterData(scale, handle));
+		return;
+	}
+	for (int i = 0; i < m_bossEncounterData.Count(); i++) {
+#ifdef DEBUG
+		DevMsg("HERE IS THE BOSSLIST[%d]: %s, %s, %d \n", i, m_bossEncounterData[i].handle.Get()->GetEntityNameAsCStr(), m_bossEncounterData[i].m_strTitle.ToCStr(), m_bossEncounterData[i].m_iMaxHealth);
+		DevMsg("Comparing handles: m_bossEncounterData[i].handle.Get() == handle.Get() %p == %p? \n", m_bossEncounterData[i].handle.Get(), handle.Get());
+#endif // DEBUG
+		// if we're the same handle try changing the title instead 
+		if (m_bossEncounterData[i].handle.Get() == handle.Get()) {
+			m_bossEncounterData[i].m_flScale = scale;
+			return;
+		}
+		else {
+			DevMsg("Handles %p == %p? do not match, will add \n", m_bossEncounterData[i].handle.Get(), handle.Get());
+
+		}
+	}
+	m_bossEncounterData.AddToTail(CBossEncounterData(scale, handle));
 }
 
 //-----------------------------------------------------------------------------
@@ -2925,6 +3355,21 @@ void CHL2_Player::OnSquadMemberKilled( inputdata_t &data )
 #ifdef MAPBASE
 	FirePlayerProxyOutput("OnSquadMemberKilled", data.value, data.pActivator, data.value.Entity());
 #endif
+}
+
+Vector CHL2_Player::GetMaxVerticalVel()
+{
+	return m_vecMaxVer;
+}
+
+Vector CHL2_Player::GetMaxHorizontalVel()
+{
+	return m_vecMaxHor;
+}
+
+Vector CHL2_Player::GetMaxOverallVel()
+{
+	return m_vecMaxOverall;
 }
 
 //-----------------------------------------------------------------------------

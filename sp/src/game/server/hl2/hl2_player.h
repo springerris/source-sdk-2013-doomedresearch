@@ -29,6 +29,59 @@ extern int TrainSpeed(int iSpeed, int iMax);
 extern void CopyToBodyQue( CBaseAnimating *pCorpse );
 
 #define ARMOR_DECAY_TIME 3.5f
+#define VELBUFFER_LENGTH 66
+
+enum TITLEPOSITION {
+	TCENTER,
+	TLEFT
+};
+
+
+// DR: Boss encounter HUD data
+class CBossEncounterData {
+
+public:
+	DECLARE_CLASS_NOBASE(CBossEncounterData);
+	DECLARE_DATADESC();
+	CBossEncounterData();
+	CBossEncounterData(string_t inTitle, EHANDLE inHandle);
+	CBossEncounterData(float m_flScale, EHANDLE inHandle);
+	CBossEncounterData(TITLEPOSITION m_iPosition, EHANDLE inHandle);
+
+	string_t m_strTitle;
+	int		 m_iMaxHealth;
+	TITLEPOSITION		 m_iPosition;
+	float		 m_flScale;
+	EHANDLE  handle;
+
+
+};
+
+class CBossEncounterDrawData {
+	// Prediction data copying
+	DECLARE_SIMPLE_DATADESC();
+	DECLARE_CLASS_NOBASE(CBossEncounterDrawData);
+	
+	DECLARE_EMBEDDED_NETWORKVAR();
+public:
+	CBossEncounterDrawData();
+
+	char percent;
+	char title[128];
+	
+	/*
+	CNetworkVar(char, percent);
+	CNetworkString(title, 128);
+	CBossEncounterDrawData(char inTitle[128], char inPercent) {
+		percent.GetForModify() = inPercent;
+		Q_strncpy(title.GetForModify(), inTitle, sizeof(inTitle));
+	}
+	CBossEncounterDrawData() {
+		percent.GetForModify() = 0;
+		Q_strncpy(title.GetForModify(), "", sizeof(""));
+	}
+	*/
+};
 
 enum HL2PlayerPhysFlag_e
 {
@@ -36,6 +89,8 @@ enum HL2PlayerPhysFlag_e
 
 	PFLAG_ONBARNACLE	= ( 1<<6 )		// player is hangning from the barnalce
 };
+
+
 
 class IPhysicsPlayerController;
 class CLogicPlayerProxy;
@@ -139,7 +194,7 @@ public:
 
 	void				AddAnimStateLayer( int iSequence, float flBlendIn = 0.0f, float flBlendOut = 0.0f, float flPlaybackRate = 1.0f, bool bHoldAtEnd = false, bool bOnlyWhenStill = false );
 #endif
-
+	
 	virtual CStudioHdr*	OnNewModel();
 
 	virtual const char *GetOverrideStepSound( const char *pszBaseStepSoundName );
@@ -212,6 +267,13 @@ public:
 	void InputShowSquadHUD( inputdata_t &inputdata );
 	void InputHideSquadHUD( inputdata_t &inputdata );
 #endif
+
+	// DR: request player to add entity to bosslist
+	void InputAddToBossList(inputdata_t& inputdata);
+	void AddToBossList(EHANDLE handle, const char* title);
+	void AddToBossList(EHANDLE handle, TITLEPOSITION position);
+	void AddToBossList(EHANDLE handle, const float scale);
+
 
 	// Locator
 	void UpdateLocatorPosition( const Vector &vecPosition );
@@ -393,19 +455,49 @@ private:
 	CNetworkVarEmbedded( CHL2PlayerLocalData, m_HL2Local );
 
 	float				m_flTimeAllSuitDevicesOff;
+	float				curSpeed;
+	float				accumSpeed;
+	Vector				m_velBuffer[VELBUFFER_LENGTH];
+	Vector				m_vecMaxOverall;
+	Vector				m_vecMaxHor;
+	Vector				m_vecMaxVer;
+public:
+	Vector				GetMaxVerticalVel();
+	Vector				GetMaxHorizontalVel();
+	Vector				GetMaxOverallVel();
 
+private:
 	bool				m_bSprintEnabled;		// Used to disable sprint temporarily
 	bool				m_bIsAutoSprinting;		// A proxy for holding down the sprint key.
+	bool				m_bIsSpeedRising;		// for speed meter accumulation
 	float				m_fAutoSprintMinTime;	// Minimum time to maintain autosprint regardless of player speed. 
+	Vector				m_vPosition;		// current position
 
 	CNetworkVar( bool, m_fIsSprinting );
 	CNetworkVarForDerived( bool, m_fIsWalking );
 
+
+	//CBossEncounterData m_bossDrawData[]
+
 protected:	// Jeep: Portal_Player needs access to this variable to overload PlayerUse for picking up objects through portals
 	bool				m_bPlayUseDenySound;		// Signaled by PlayerUse, but can be unset by HL2 ladder code...
 
-private:
+	CNetworkVar(int, m_iBossCount);
+	CUtlVector<CBossEncounterData> m_bossEncounterData;
+	//CNetworkArray(CBossEncounterDraw, m_bossDrawData, MAX_BOSSES_DISPLAYED);
+	CNetworkArray( float, m_bossDrawDataP, MAX_BOSSES_DISPLAYED);
+	CNetworkArray(float, m_bossDrawDataScale, MAX_BOSSES_DISPLAYED);
+	CNetworkArray(int, m_bossDrawDataPos, MAX_BOSSES_DISPLAYED);
+public:
+	CNetworkArray( string_t, m_bossDrawDataTitle, MAX_BOSSES_DISPLAYED);
+	CNetworkString(m_bossDrawDataTitle1, 64);
+	CNetworkString(m_bossDrawDataTitle2, 64);
+	CNetworkString(m_bossDrawDataTitle3, 64);
+	CNetworkString(m_bossDrawDataTitle4, 64);
 
+
+private:
+	
 	CAI_Squad *			m_pPlayerAISquad;
 	CSimpleSimTimer		m_CommanderUpdateTimer;
 	float				m_RealTimeLastSquadCommand;
@@ -455,15 +547,19 @@ private:
 	// Protagonist used by protagonist_system.h
 	string_t			m_iszProtagonistName;
 	CNetworkVar( int, m_nProtagonistIndex );
+	// DR: Network the basic boss list data
+	
 #endif
 
 #ifdef SP_ANIM_STATE
 	CMapbasePlayerAnimState* m_pPlayerAnimState;
 
+
 	// At the moment, we network the render angles since almost none of the player anim stuff is done on the client in SP.
 	// If any of this is ever adapted for MP, this method should be replaced with replicating/moving the anim state to the client.
 	CNetworkVar( float, m_flAnimRenderYaw );
 	CNetworkVar( float, m_flAnimRenderZ );
+	
 #endif
 };
 

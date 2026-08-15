@@ -199,6 +199,8 @@ protected:
 	CNetworkVar( float, m_flHDRColorScale );
 	float		m_flFireTime;
 	float		m_flDamage;			// Damage per second to touchers.
+	// DR: beam length goes here
+	float		m_flLength;			// 
 	CNetworkVar( int, m_nNumBeamEnts );
 #if defined( CLIENT_DLL )
 	pixelvis_handle_t	m_queryHandleHalo;
@@ -211,6 +213,7 @@ private:
 	void InputColorRedValue( inputdata_t &inputdata );
 	void InputColorBlueValue( inputdata_t &inputdata );
 	void InputColorGreenValue( inputdata_t &inputdata );
+	void InputRelink( inputdata_t& inputdata );
 #endif
 
 	// Beam Data Elements

@@ -19,7 +19,6 @@
 
 EXTERN_RECV_TABLE( DT_HL2Local );
 
-
 class C_HL2PlayerLocalData
 {
 public:
@@ -28,7 +27,7 @@ public:
 	DECLARE_EMBEDDED_NETWORKVAR();
 
 	C_HL2PlayerLocalData();
-
+	
 	float	m_flSuitPower;
 	bool	m_bZooming;
 	int		m_bitsActiveDevices;

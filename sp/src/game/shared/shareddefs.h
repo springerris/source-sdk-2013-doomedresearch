@@ -116,6 +116,7 @@ public:
 #define MAX_WEAPON_POSITIONS	20	// max number of items within a slot
 #define MAX_ITEM_TYPES			6	// hud item selection slots
 #define MAX_WEAPONS				48	// Max number of weapons available
+#define MAX_BOSSES_DISPLAYED 4		// DR: max number of bosses to display in HUD
 
 #define MAX_ITEMS				5	// hard coded item types
 
@@ -461,6 +462,9 @@ enum PLAYER_ANIM
 #define DAMAGE_EVENTS_ONLY		1		// Call damage functions, but don't modify health
 #define	DAMAGE_YES				2
 #define	DAMAGE_AIM				3
+
+// DR: length of high velocity vector for certain interactions
+#define HIGH_VEL 500
 
 // Spectator Movement modes
 enum {

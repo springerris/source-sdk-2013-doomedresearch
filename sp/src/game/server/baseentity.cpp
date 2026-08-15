@@ -15,6 +15,7 @@
 #include "eventqueue.h"
 #include "hierarchy.h"
 #include "basecombatweapon.h"
+//#include "grenade_base_dr.h"
 #include "const.h"
 #include "player.h"		// For debug draw sending
 #include "ndebugoverlay.h"
@@ -62,6 +63,8 @@
 #include "env_debughistory.h"
 #include "tier1/utlstring.h"
 #include "utlhashtable.h"
+#include "basegrenade_shared.h"
+#include "hl2_player.h"
 #ifdef MAPBASE
 #include "mapbase/matchers.h"
 #include "mapbase/datadesc_mod.h"
@@ -546,6 +549,47 @@ void CBaseEntity::PostConstructor( const char *szClassname )
 void CBaseEntity::PostClientActive( void )
 {
 }
+
+//
+// DR: add myself to player's bosslist
+//
+void CBaseEntity::InputAddToBossList(inputdata_t& inputdata)
+{
+#ifdef DEBUG
+	DevMsg("INPUT REQUEST TO ADD TO BOSSLIST: %s, %s \n", this->GetEntityNameAsCStr(), inputdata.value.String());
+#endif // DEBUG
+	CBasePlayer* plr = UTIL_GetLocalPlayer();
+	if (CHL2_Player* hlplr = dynamic_cast<CHL2_Player*>(plr)) {
+		EHANDLE handle = this;
+		hlplr->AddToBossList(handle, inputdata.value.String());
+	}
+}
+
+void CBaseEntity::InputAddToBossListScale(inputdata_t& inputdata)
+{
+#ifdef DEBUG
+	DevMsg("INPUT REQUEST TO ADD TO BOSSLIST: %s, %f \n", this->GetEntityNameAsCStr(), inputdata.value.Float());
+#endif // DEBUG
+	CBasePlayer* plr = UTIL_GetLocalPlayer();
+	if (CHL2_Player* hlplr = dynamic_cast<CHL2_Player*>(plr)) {
+		EHANDLE handle = this;
+		hlplr->AddToBossList(handle, inputdata.value.Float());
+	}
+}
+
+void CBaseEntity::InputAddToBossListPos(inputdata_t& inputdata)
+{
+#ifdef DEBUG
+	DevMsg("INPUT REQUEST TO ADD TO BOSSLIST: %s, %i \n", this->GetEntityNameAsCStr(), inputdata.value.Int());
+#endif // DEBUG
+	CBasePlayer* plr = UTIL_GetLocalPlayer();
+	if (CHL2_Player* hlplr = dynamic_cast<CHL2_Player*>(plr)) {
+		EHANDLE handle = this;
+		hlplr->AddToBossList(handle, static_cast<TITLEPOSITION>(inputdata.value.Int()));
+	}
+}
+
+
 
 //-----------------------------------------------------------------------------
 // Purpose: Verifies that this entity's data description is valid in debug builds.
@@ -2122,6 +2166,9 @@ BEGIN_DATADESC_NO_BASE( CBaseEntity )
 //	DEFINE_FIELD( m_bToolRecording,		FIELD_BOOLEAN ),
 //	DEFINE_FIELD( m_ToolHandle,		FIELD_INTEGER ),
 
+	//DR additions
+	DEFINE_INPUTFUNC(FIELD_STRING, "LaunchGrenadeForward", InputLaunchGrenadeForward),
+
 	// NOTE: This is tricky. TeamNum must be saved, but we can't directly
 	// read it in, because we can only set it after the team entity has been read in,
 	// which may or may not actually occur before the entity is parsed.
@@ -2254,6 +2301,10 @@ BEGIN_DATADESC_NO_BASE( CBaseEntity )
 
 	DEFINE_INPUTFUNC( FIELD_STRING, "SetThinkNull", InputSetThinkNull ),
 
+	DEFINE_INPUTFUNC(FIELD_STRING, "AddToBossListWithTitle", InputAddToBossList),
+	DEFINE_INPUTFUNC(FIELD_FLOAT, "AddToBossListWithScale", InputAddToBossListScale),
+	DEFINE_INPUTFUNC(FIELD_INTEGER, "AddToBossListWithPosition", InputAddToBossListPos),
+
 	DEFINE_OUTPUT( m_OnKilled, "OnKilled" ),
 #endif
 
@@ -2361,6 +2412,8 @@ BEGIN_ENT_SCRIPTDESC_ROOT_WITH_HELPER( CBaseEntity, "Root class of all server-si
 	DEFINE_SCRIPTFUNC_NAMED( ScriptPhysicsDestroyObject, "PhysicsDestroyObject", "Destroys the entity's physics object" )
 
 	DEFINE_SCRIPTFUNC( ApplyAbsVelocityImpulse, "" )
+	DEFINE_SCRIPTFUNC( ApplyAbsVelocityImpulseUnsafe, "")
+	DEFINE_SCRIPTFUNC( ApplyLocalVelocityImpulseUnsafe, "")
 	DEFINE_SCRIPTFUNC( ApplyLocalAngularVelocityImpulse, "" )
 
 	DEFINE_SCRIPTFUNC( BodyTarget, "" )
@@ -3242,9 +3295,10 @@ void CBaseEntity::PhysicsRelinkChildren( float dt )
 		}
 		else if ( child->GetOwnerEntity() != this )
 		{
-			// the only case where this is valid is if this entity is an attached ragdoll.
-			// So assert here to catch the non-ragdoll case.
-			Assert( 0 );
+			// ~~the only case where this is valid is if this entity is an attached ragdoll.~~
+			// ~~So assert here to catch the non-ragdoll case.~~
+			// DR: HOLY SHIT THE SPAM FROM THIS IN DEBUG MODE IS INSANE
+			//Assert( 0 );
 		}
 
 		if ( child->FirstMoveChild() )
@@ -4864,6 +4918,22 @@ void CBaseEntity::InputAlpha( inputdata_t &inputdata )
 	SetRenderColorA( clamp( inputdata.value.Int(), 0, 255 ) );
 }
 
+
+void CBaseEntity::InputShootGrenadeByType(inputdata_t& inputdata)
+{
+}
+
+void CBaseEntity::InputLaunchGrenadeForward(inputdata_t& inputdata)
+{
+	const char* str = inputdata.value.String();
+	for (int i = 0; i < Status_t_size; i++) {
+		if (V_strcmp(str, Status_t_mapped[i]) == 0) {
+			Vector fwd;
+			this->GetVectors(&fwd, NULL, NULL);
+			//CBaseGrenadeDR::DRLaunchGrenadeAtTarget(this, this->GetAbsOrigin(), this->GetAbsOrigin()*(10*fwd), 500, 100, static_cast<DRGrenade_t>(i), false);
+		}
+	}
+}
 
 //-----------------------------------------------------------------------------
 // Activate alternative sorting

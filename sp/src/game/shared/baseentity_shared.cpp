@@ -1156,7 +1156,8 @@ void CBaseEntity::VPhysicsUpdate( IPhysicsObject *pPhysics )
 		{
 			if ( GetMoveParent() )
 			{
-				DevWarning("Updating physics on object in hierarchy %s!\n", GetClassname());
+				// DR: no.
+				//DevWarning("Updating physics on object in hierarchy %s!\n", GetClassname());
 				return;
 			}
 			Vector origin;
@@ -2562,6 +2563,30 @@ void CBaseEntity::ApplyLocalVelocityImpulse( const Vector &inVecImpulse )
 	}
 }
 
+// DR: the training wheels are off.
+void CBaseEntity::ApplyLocalVelocityImpulseUnsafe(const Vector& inVecImpulse)
+{
+	// NOTE: Don't have to use GetVelocity here because local values
+	// are always guaranteed to be correct, unlike abs values which may 
+	// require recomputation
+	if (inVecImpulse != vec3_origin)
+	{
+		Vector vecImpulse = inVecImpulse;
+
+		if (GetMoveType() == MOVETYPE_VPHYSICS)
+		{
+			Vector worldVel;
+			VPhysicsGetObject()->LocalToWorld(&worldVel, vecImpulse);
+			VPhysicsGetObject()->AddVelocity(&worldVel, NULL);
+		}
+		else
+		{
+			InvalidatePhysicsRecursive(VELOCITY_CHANGED);
+			m_vecVelocity += vecImpulse;
+		}
+	}
+}
+
 void CBaseEntity::ApplyAbsVelocityImpulse( const Vector &inVecImpulse )
 {
 	if ( inVecImpulse != vec3_origin )
@@ -2593,6 +2618,27 @@ void CBaseEntity::ApplyAbsVelocityImpulse( const Vector &inVecImpulse )
 			Vector vecResult;
 			VectorAdd( GetAbsVelocity(), vecImpulse, vecResult );
 			SetAbsVelocity( vecResult );
+		}
+	}
+}
+
+// DR: the training wheels are off.
+void CBaseEntity::ApplyAbsVelocityImpulseUnsafe(const Vector& inVecImpulse)
+{
+	if (inVecImpulse != vec3_origin)
+	{
+		Vector vecImpulse = inVecImpulse;
+
+		if (GetMoveType() == MOVETYPE_VPHYSICS)
+		{
+			VPhysicsGetObject()->AddVelocity(&vecImpulse, NULL);
+		}
+		else
+		{
+			// NOTE: Have to use GetAbsVelocity here to ensure it's the correct value
+			Vector vecResult;
+			VectorAdd(GetAbsVelocity(), vecImpulse, vecResult);
+			SetAbsVelocity(vecResult);
 		}
 	}
 }

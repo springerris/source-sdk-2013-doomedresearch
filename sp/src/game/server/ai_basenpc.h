@@ -712,6 +712,8 @@ private:
 	void				RebalanceThinks();
 
 	bool				PreNPCThink();
+	virtual void		rootCharacter();
+	virtual void		unrootCharacter();
 	void				PostNPCThink();
 
 	bool				PreThink( void );

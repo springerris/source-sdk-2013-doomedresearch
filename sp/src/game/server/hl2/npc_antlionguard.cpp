@@ -332,6 +332,7 @@ private:
 	void	SummonAntlions( void );
 					
 	void	ChargeLookAhead( void );
+	void	rootCharacter() override;
 	bool	EnemyIsRightInFrontOfMe( CBaseEntity **pEntity );
 	bool	HandleChargeImpact( Vector vecImpact, CBaseEntity *pEntity );
 	bool	ShouldCharge( const Vector &startPos, const Vector &endPos, bool useTime, bool bCheckForCancel );
@@ -1035,7 +1036,7 @@ int CNPC_AntlionGuard::SelectCombatSchedule( void )
 	if ( HasCondition(COND_ANTLIONGUARD_CAN_SUMMON) )
 	{
 		// If I can charge, and have antlions, charge instead
-		if ( HasCondition( COND_ANTLIONGUARD_CAN_CHARGE ) && m_iNumLiveAntlions )
+		if ( HasCondition( COND_ANTLIONGUARD_CAN_CHARGE ) && m_iNumLiveAntlions && (rootState<=0) )
 			return SCHED_ANTLIONGUARD_CHARGE;
 
 		return SCHED_ANTLIONGUARD_SUMMON;
@@ -1057,7 +1058,7 @@ int CNPC_AntlionGuard::SelectCombatSchedule( void )
 	}
 
 	// Charging
-	if ( HasCondition( COND_ANTLIONGUARD_CAN_CHARGE ) )
+	if ( HasCondition( COND_ANTLIONGUARD_CAN_CHARGE ) && (rootState <= 0))
 	{
 		// Don't let other squad members charge while we're doing it
 		OccupyStrategySlot( SQUAD_SLOT_ANTLIONGUARD_CHARGE );
@@ -2724,6 +2725,12 @@ void CNPC_AntlionGuard::ChargeLookAhead( void )
 	}
 }
 
+// DR: stop charge when rooted.
+void CNPC_AntlionGuard::rootCharacter() {
+	CBaseCombatCharacter::rootCharacter();
+	SetActivity(ACT_ANTLIONGUARD_CHARGE_STOP);
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: Handles the guard charging into something. Returns true if it hit the world.
 //-----------------------------------------------------------------------------
@@ -3401,11 +3408,11 @@ Activity CNPC_AntlionGuard::NPC_TranslateActivity( Activity baseAct )
 #endif
 
 	//See which run to use
-	if ( ( baseAct == ACT_RUN ) && IsCurSchedule( SCHED_ANTLIONGUARD_CHARGE ) )
+	if ( ( baseAct == ACT_RUN ) && IsCurSchedule( SCHED_ANTLIONGUARD_CHARGE ) && (rootState <= 0))
 		return (Activity) ACT_ANTLIONGUARD_CHARGE_RUN;
 
 	// Do extra code if we're trying to close on an enemy in a confined space (unless scripted)
-	if ( hl2_episodic.GetBool() && m_bInCavern && baseAct == ACT_RUN && IsInAScript() == false )
+	if ( hl2_episodic.GetBool() && m_bInCavern && baseAct == ACT_RUN && IsInAScript() == false && (rootState <= 0))
 		return (Activity) ACT_ANTLIONGUARD_CHARGE_RUN;
 
 	if ( ( baseAct == ACT_RUN ) && ( m_iHealth <= (m_iMaxHealth/4) ) )
@@ -3693,7 +3700,7 @@ void CNPC_AntlionGuard::GatherConditions( void )
 	// See if we can charge the target
 	if ( GetEnemy() )
 	{
-		if ( ShouldCharge( GetAbsOrigin(), GetEnemy()->GetAbsOrigin(), true, false ) )
+		if ( ShouldCharge( GetAbsOrigin(), GetEnemy()->GetAbsOrigin(), true, false ) && (rootState <= 0) )
 		{
 			SetCondition( COND_ANTLIONGUARD_CAN_CHARGE );
 		}

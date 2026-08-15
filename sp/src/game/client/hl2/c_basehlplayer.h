@@ -19,6 +19,25 @@
 #include "mapbase/mapbase_playeranimstate.h"
 #endif
 
+class C_BossEncounterDrawData {
+	DECLARE_SIMPLE_DATADESC();
+	// Prediction data copying
+	DECLARE_CLASS_NOBASE(C_BossEncounterDrawData);
+	DECLARE_EMBEDDED_NETWORKVAR();
+public:
+	char percent;
+	char title[128];
+	C_BossEncounterDrawData(char inTitle[128], char inPercent) {
+		percent = inPercent;
+		Q_strncpy(title, inTitle, sizeof(inTitle));
+	}
+	C_BossEncounterDrawData() {
+		percent = 0;
+		Q_strncpy(title, "", sizeof(""));
+	}
+};
+
+
 class C_BaseHLPlayer : public C_BasePlayer
 {
 public:
@@ -27,7 +46,11 @@ public:
 	DECLARE_PREDICTABLE();
 
 						C_BaseHLPlayer();
-
+	//C_BossEncounterDrawData* GetBossEncounterDrawData() { return m_bossDrawData; };
+	float* GetBossEncounterDrawP() { return m_bossDrawDataP; }
+	float* GetBossEncounterDrawScale() { return m_bossDrawDataScale; }
+	int* GetBossEncounterDrawPos() { return m_bossDrawDataPos; }
+	int GetBossCount() { return m_iBossCount; }
 	virtual void		OnDataChanged( DataUpdateType_t updateType );
 	virtual void		AddEntity( void );
 
@@ -74,7 +97,7 @@ public:
 #endif
 
 public:
-
+	//CUtlVector<C_BossEncounterDrawData> m_bossList;
 	C_HL2PlayerLocalData		m_HL2Local;
 	EHANDLE				m_hClosestNPC;
 	float				m_flSpeedModTime;
@@ -93,9 +116,24 @@ private:
 	bool				m_bPlayUseDenySound;		// Signaled by PlayerUse, but can be unset by HL2 ladder code...
 	float				m_flSpeedMod;
 	float				m_flExitSpeedMod;
+public: 
+	char m_bossDrawDataTitle[MAX_BOSSES_DISPLAYED][64];
+	char m_bossDrawDataTitle1[64];
+	char m_bossDrawDataTitle2[64];
+	char m_bossDrawDataTitle3[64];
+	char m_bossDrawDataTitle4[64];
+protected:
+	float m_bossDrawDataP[MAX_BOSSES_DISPLAYED];
+	float m_bossDrawDataScale[MAX_BOSSES_DISPLAYED];
+	int m_bossDrawDataPos[MAX_BOSSES_DISPLAYED];
+	
+	int 	m_iBossCount;
 
 #ifdef MAPBASE
 	int					m_nProtagonistIndex;
+	//C_BossEncounterDrawData 	m_bossDrawData[MAX_BOSSES_DISPLAYED];
+
+
 #endif
 	
 #ifdef MAPBASE_MP

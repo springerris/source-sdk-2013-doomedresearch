@@ -40,6 +40,7 @@ public:
 	CWeapon357( void );
 
 	void	PrimaryAttack( void );
+	void	SecondaryAttack( void );
 	void	Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatCharacter *pOperator );
 
 	float	WeaponAutoAimScale()	{ return 0.6f; }
@@ -52,7 +53,7 @@ public:
 	virtual float	GetMinRestTime( void ) { return 1.0f; }
 	virtual float	GetMaxRestTime( void ) { return 2.5f; }
 
-	virtual float GetFireRate( void ) { return 1.0f; }
+	virtual float GetFireRate( void ) { return 0.6f; }
 
 	virtual const Vector& GetBulletSpread( void )
 	{
@@ -367,8 +368,8 @@ void CWeapon357::PrimaryAttack( void )
 	SendWeaponAnim( ACT_VM_PRIMARYATTACK );
 	pPlayer->SetAnimation( PLAYER_ATTACK1 );
 
-	m_flNextPrimaryAttack = gpGlobals->curtime + 0.75;
-	m_flNextSecondaryAttack = gpGlobals->curtime + 0.75;
+	m_flNextPrimaryAttack = gpGlobals->curtime + GetFireRate();
+	m_flNextSecondaryAttack = gpGlobals->curtime + GetFireRate();
 
 	m_iClip1--;
 
@@ -388,7 +389,7 @@ void CWeapon357::PrimaryAttack( void )
 
 	pPlayer->SnapEyeAngles( angles );
 
-	pPlayer->ViewPunch( QAngle( -8, random->RandomFloat( -2, 2 ), 0 ) );
+	pPlayer->ViewPunch(QAngle(-4, random->RandomFloat(-1, 1), 0));
 
 	CSoundEnt::InsertSound( SOUND_COMBAT, GetAbsOrigin(), 600, 0.2, GetOwner() );
 
@@ -396,5 +397,70 @@ void CWeapon357::PrimaryAttack( void )
 	{
 		// HEV suit - indicate out of ammo condition
 		pPlayer->SetSuitUpdate( "!HEV_AMO0", FALSE, 0 ); 
+	}
+}
+
+void CWeapon357::SecondaryAttack(void)
+{
+	// Only the player fires this way so we can cast
+	CBasePlayer* pPlayer = ToBasePlayer(GetOwner());
+
+	if (!pPlayer)
+	{
+		return;
+	}
+
+	if (m_iClip1 <= 0)
+	{
+		if (!m_bFireOnEmpty)
+		{
+			Reload();
+		}
+		else
+		{
+			WeaponSound(EMPTY);
+			m_flNextPrimaryAttack = 0.15;
+		}
+
+		return;
+	}
+
+	m_iPrimaryAttacks++;
+	gamestats->Event_WeaponFired(pPlayer, true, GetClassname());
+
+	WeaponSound(SINGLE);
+	pPlayer->DoMuzzleFlash();
+
+	SendWeaponAnim(ACT_VM_PRIMARYATTACK);
+	pPlayer->SetAnimation(PLAYER_ATTACK1);
+
+	m_flNextPrimaryAttack = gpGlobals->curtime + GetFireRate();
+	m_flNextSecondaryAttack = gpGlobals->curtime + GetFireRate()/3;
+
+	m_iClip1--;
+
+	Vector vecSrc = pPlayer->Weapon_ShootPosition();
+	Vector vecAiming = pPlayer->GetAutoaimVector(AUTOAIM_SCALE_DEFAULT);
+	pPlayer->FireBullets(1, vecSrc, vecAiming, VECTOR_CONE_5DEGREES, MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 0);
+
+	pPlayer->SetMuzzleFlashTime(gpGlobals->curtime + 0.5);
+
+	//Disorient the player
+	QAngle angles = pPlayer->GetLocalAngles();
+
+	angles.x += random->RandomInt(-1, 1);
+	angles.y += random->RandomInt(-1, 1);
+	angles.z = 0;
+
+	pPlayer->SnapEyeAngles(angles);
+
+	pPlayer->ViewPunch(QAngle(-5, random->RandomFloat(-1, 1), 0));
+
+	CSoundEnt::InsertSound(SOUND_COMBAT, GetAbsOrigin(), 600, 0.2, GetOwner());
+
+	if (!m_iClip1 && pPlayer->GetAmmoCount(m_iPrimaryAmmoType) <= 0)
+	{
+		// HEV suit - indicate out of ammo condition
+		pPlayer->SetSuitUpdate("!HEV_AMO0", FALSE, 0);
 	}
 }

@@ -73,7 +73,7 @@ typedef CAI_BlendingHost< CAI_BehaviorHost<CAI_BlendedNPC> > CAI_BaseAntlionBase
 class CNPC_Antlion : public CAI_BaseAntlionBase
 {
 public:
-
+	
 	DECLARE_CLASS( CNPC_Antlion, CAI_BaseAntlionBase  );
 
 	CNPC_Antlion( void );
@@ -87,7 +87,9 @@ public:
 	float		MaxYawSpeed( void );
 	bool		FInViewCone( CBaseEntity *pEntity );
 	bool		FInViewCone( const Vector &vecSpot );
-				
+		
+	virtual void rootCharacter();
+	virtual void unrootCharacter();
 	void		Activate( void );
 	void		HandleAnimEvent( animevent_t *pEvent );
 	void		StartTask( const Task_t *pTask );
@@ -381,6 +383,7 @@ private:
 		TASK_ANTLION_GET_PATH_TO_RANDOM_NODE,
 		TASK_ANTLION_FIND_COVER_FROM_SAVEPOSITION,
 	};
+	friend class CStatusEffect;
 };
 
 

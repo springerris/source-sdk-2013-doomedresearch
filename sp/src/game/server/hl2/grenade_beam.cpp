@@ -277,7 +277,7 @@ void CGrenadeBeam::GrenadeBeamTouch( CBaseEntity *pOther )
 	trace_t tr;
 	Vector vDirection = GetAbsVelocity();
 	VectorNormalize(vDirection);
-	UTIL_TraceLine( GetAbsOrigin()-vDirection, GetAbsOrigin()+vDirection, MASK_SOLID, NULL, COLLISION_GROUP_NONE, &tr );
+	UTIL_TraceLine( GetAbsOrigin()-vDirection, GetAbsOrigin()+vDirection, MASK_SHOT, NULL, COLLISION_GROUP_NONE, &tr );
 	UTIL_DecalTrace( &tr, "RedGlowFade" );
 	UTIL_ImpactTrace( &tr, DMG_ENERGYBEAM );
 }

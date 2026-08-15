@@ -2970,6 +2970,7 @@ int	CNPC_CombineGunship::OnTakeDamage_Alive( const CTakeDamageInfo &inputInfo )
 #else
 	if ( inputInfo.GetDamageType() != DMG_GENERIC )
 #endif
+	
 	{
 		// Ignore mundane bullet damage.
 		if ( ( inputInfo.GetDamageType() & DMG_BLAST ) == false )

@@ -47,6 +47,9 @@ public:
 	CSprite	*m_pSprite;
 	string_t m_iszSpriteName;
 	Vector  m_firePosition;
+	Vector m_vecLaserOrigin;
+	float	m_flLength;
+	float	m_flRealWidth;
 
 #ifdef MAPBASE
 	COutputEvent	m_OnTouchedByEntity;

@@ -181,6 +181,13 @@ public:
 		SetNextThink( gpGlobals->curtime );  
 	}
 
+	inline void DieIn(float duration)
+	{
+		SetThink(&CSprite::AnimateUntilDead);
+		m_flDieTime = gpGlobals->curtime + duration;
+		SetNextThink(gpGlobals->curtime);
+	}
+
 	inline void AnimateAndDie( float framerate ) 
 	{ 
 		SetThink(&CSprite::AnimateUntilDead); 

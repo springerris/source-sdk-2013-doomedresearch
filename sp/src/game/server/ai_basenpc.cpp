@@ -4376,6 +4376,17 @@ bool CAI_BaseNPC::PreNPCThink()
 	return true;
 }
 
+void CAI_BaseNPC::rootCharacter() {
+	this->m_flSpeedModifier = this->m_flSpeedModifier * 0.01;
+	this->SetGravity(this->GetGravity() + 5000);
+}
+
+void CAI_BaseNPC::unrootCharacter() {
+	this->m_flSpeedModifier = this->m_flSpeedModifier * 100;
+	this->SetGravity(this->GetGravity() - 5000);
+}
+
+
 void CAI_BaseNPC::PostNPCThink( void ) 
 { 
 	if ( g_StartTimeCurThink != 0.0 && VCRGetMode() == VCR_Disabled )

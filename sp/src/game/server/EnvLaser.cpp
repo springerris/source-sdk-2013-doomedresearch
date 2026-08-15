@@ -20,8 +20,12 @@ BEGIN_DATADESC( CEnvLaser )
 	DEFINE_KEYFIELD( m_iszLaserTarget, FIELD_STRING, "LaserTarget" ),
 	DEFINE_FIELD( m_pSprite, FIELD_CLASSPTR ),
 	DEFINE_KEYFIELD( m_iszSpriteName, FIELD_STRING, "EndSprite" ),
+	DEFINE_KEYFIELD(m_vecLaserOrigin, FIELD_VECTOR,"LaserTargetCoords"),
 	DEFINE_FIELD( m_firePosition, FIELD_VECTOR ),
 	DEFINE_KEYFIELD( m_flStartFrame, FIELD_FLOAT, "framestart" ),
+	DEFINE_KEYFIELD(m_flRealWidth, FIELD_FLOAT, "realwidth"),
+	
+	DEFINE_KEYFIELD(m_flLength, FIELD_FLOAT, "laserlength"),
 
 	// Function Pointers
 	DEFINE_FUNCTION( StrikeThink ),
@@ -55,7 +59,7 @@ void CEnvLaser::Spawn( void )
 	SetEndWidth( GetWidth() );				// Note: EndWidth is not scaled
 
 	PointsInit( GetLocalOrigin(), GetLocalOrigin() );
-
+	SetAbsAngles(GetLocalAngles());
 	Precache( );
 
 	if ( !m_pSprite && m_iszSpriteName != NULL_STRING )
@@ -236,23 +240,57 @@ void CEnvLaser::FireAtPoint( trace_t &tr )
 	}
 }
 
-
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
 void CEnvLaser::StrikeThink( void )
 {
 	CBaseEntity *pEnd = RandomTargetname( STRING( m_iszLaserTarget ) );
+	// DR: if no targetname is specified, just fire the beam forward for the specified length
 
-	Vector vecFireAt = GetAbsEndPos();
+	Vector fwd;
+	QAngle angles = GetAbsAngles();
+	//Vector localOrigin = GetLocalOrigin();
+	//localOrigin.x += m_flLength;
+	
+#ifdef DEBUG
+	//if(gpGlobals->tickcount % 66 == 0)	DevMsg("BEAM %s %p ANGLES %f %f %f \n", this->GetEntityName().ToCStr(), this, angles.x, angles.y, angles.z);
+#endif // DEBUG
+	//AngleVectors(angles,&fwd);
+	this->GetVectors(&fwd, NULL, NULL);
+	Vector vecFireAt;
+	//EntityToWorldSpace(localOrigin, &vecFireAt);
+	//
+	
+	vecFireAt = this->GetAbsOrigin() + (fwd * m_flLength);
+
 	if ( pEnd )
 	{
+#ifdef DEBUG
+		if (gpGlobals->tickcount % 66 == 0)	DevMsg("BEAM NOT USING LENGTH");
+#endif // DEBUG
 		vecFireAt = pEnd->GetAbsOrigin();
 	}
-
+	//DebugDrawLine(GetAbsOrigin(), vecFireAt, 255, 5, 5, true, 0.5);
 	trace_t tr;
-
-	UTIL_TraceLine( GetAbsOrigin(), vecFireAt, MASK_SOLID, NULL, COLLISION_GROUP_NONE, &tr );
+#ifdef DEBUG
+	/*
+	if (gpGlobals->tickcount % 66 == 0) DevMsg("BEAM %s %p START %f %f %f \n", this->GetEntityName().ToCStr(), this, GetAbsOrigin().x, GetAbsOrigin().y, GetAbsOrigin().z);
+	if (gpGlobals->tickcount % 66 == 0) DevMsg("BEAM %s %p FWD %f %f %f \n", this->GetEntityName().ToCStr(), this, fwd.x, fwd.y, fwd.z);
+	if (gpGlobals->tickcount % 66 == 0) DevMsg("BEAM %s %p LENGTH %f \n", this->GetEntityName().ToCStr(), this, m_flLength);
+	if (gpGlobals->tickcount % 66 == 0) DevMsg("BEAM %s %p END %f %f %f \n", this->GetEntityName().ToCStr(), this, vecFireAt.x, vecFireAt.y, vecFireAt.z);
+	*/
+#endif // DEBUG
+	if (m_flRealWidth <= FLT_EPSILON) {
+		UTIL_TraceLine(GetAbsOrigin(), vecFireAt, MASK_SOLID, NULL, COLLISION_GROUP_NONE, &tr);
+	}
+	else {
+		Vector mins = Vector(-m_flRealWidth / 2.0, -m_flRealWidth / 2.0, -m_flRealWidth / 2.0);
+		Vector maxs = Vector(m_flRealWidth / 2.0, m_flRealWidth / 2.0, m_flRealWidth / 2.0);
+		UTIL_TraceHull(GetAbsOrigin() + fwd * m_flRealWidth, vecFireAt, mins, maxs, MASK_SOLID, this->GetOwnerEntity(), COLLISION_GROUP_NONE, &tr);
+	}
+	tr.startpos = tr.startpos - fwd * m_flRealWidth / 2;
+	tr.endpos = tr.endpos + fwd * m_flRealWidth/2;
 	FireAtPoint( tr );
 	SetNextThink( gpGlobals->curtime );
 }

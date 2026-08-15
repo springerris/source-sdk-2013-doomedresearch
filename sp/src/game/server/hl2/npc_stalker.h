@@ -35,6 +35,7 @@ public:
 	// ------------------------------
 	//	Laser Beam
 	// ------------------------------
+	
 	int					m_eBeamPower;
 	Vector				m_vLaserDir;
 	Vector				m_vLaserTargetPos;
@@ -48,6 +49,8 @@ public:
 	CSprite*			m_pLightGlow;
 #ifdef MAPBASE
 	// This is a keyvalue now, so we have to initialize the value through somewhere that isn't Spawn()
+	float				m_eMaxYawSpeed = 10.0f;
+	bool				m_eBeamEnabled = true;
 	int					m_iPlayerAggression = 0;
 	bool				m_bBleed;
 #else
@@ -115,6 +118,9 @@ public:
 	void			AddZigZagToPath(void);
 	void			StartAttackBeam();
 	void			UpdateAttackBeam();
+	void			BeamOn(inputdata_t& inputdata);
+	void			BeamOff(inputdata_t& inputdata);
+	void			SetBeamPower(inputdata_t& inputdata);
 
 	CNPC_Stalker(void);
 

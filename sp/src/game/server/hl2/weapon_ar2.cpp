@@ -418,6 +418,25 @@ bool CWeaponAR2::Reload( void )
 }
 
 //-----------------------------------------------------------------------------
+// Purpose: Epic firerate rampup
+//-----------------------------------------------------------------------------
+float CWeaponAR2::GetFireRate(void)
+{	
+	int reachMax = 12;
+	float startRate = 2;
+	float maxRate = (startRate - sqrt(1.1 * reachMax * 0.1)) / 10;
+	float fireRate = 0.0;
+	if (m_nShotsFired > reachMax) {
+		fireRate = maxRate;
+	}
+	else {
+		fireRate = (startRate - sqrt(1.1 * m_nShotsFired * 0.1)) / 10;
+	}
+	return fireRate;
+}
+
+
+//-----------------------------------------------------------------------------
 // Purpose: 
 // Input  : *pOperator - 
 //-----------------------------------------------------------------------------

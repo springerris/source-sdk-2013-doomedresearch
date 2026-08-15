@@ -17,6 +17,8 @@
 //------------------------------------
 #define SF_CSCANNER_NO_DYNAMIC_LIGHT	(1 << 16)
 #define SF_CSCANNER_STRIDER_SCOUT		(1 << 17)
+// DR: always dive on death
+#define SF_CSCANNER_ALWAYSDIVE		(1 << 18)
 
 class CBeam;
 class CSprite;

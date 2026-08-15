@@ -136,24 +136,3 @@ void C_CrossbowBolt::ClientThink( void )
 	m_bUpdated = false;
 }
 
-//-----------------------------------------------------------------------------
-// Purpose: 
-// Input  : &data - 
-//-----------------------------------------------------------------------------
-void CrosshairLoadCallback( const CEffectData &data )
-{
-	IClientRenderable *pRenderable = data.GetRenderable( );
-	if ( !pRenderable )
-		return;
-	
-	Vector	position;
-	QAngle	angles;
-
-	// If we found the attachment, emit sparks there
-	if ( pRenderable->GetAttachment( data.m_nAttachmentIndex, position, angles ) )
-	{
-		FX_ElectricSpark( position, 1.0f, 1.0f, NULL );
-	}
-}
-
-DECLARE_CLIENT_EFFECT( "CrossbowLoad", CrosshairLoadCallback );

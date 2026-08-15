@@ -128,6 +128,9 @@ enum bodygroups
 
 //-----------------------------------------------------------------------------
 
+// DR: flinch interval
+#define STRIDER_FLINCH_INTERVAL 30
+
 #define STRIDER_DEFAULT_SHOOT_DURATION			2.5 // spend this much time stitching to each target.
 #define STRIDER_SHOOT_ON_TARGET_TIME			0.5 // How much of DEFAULT_SHOOT_DURATION is spent on-target (vs. stitching up to a target)
 #define STRIDER_SHOOT_VARIATION					1.0 // up to 1 second of variance
@@ -517,7 +520,6 @@ void CNPC_Strider::Spawn()
 	SetHullType( HULL_LARGE_CENTERED );
 	SetHullSizeNormal();
 	SetDefaultEyeOffset();
-	
 	SetNavType( NAV_FLY );
 	m_flGroundSpeed	= STRIDER_SPEED;
 	m_flSpeedScale = m_flTargetSpeedScale = 1.0;
@@ -3138,6 +3140,8 @@ void CNPC_Strider::TraceAttack( const CTakeDamageInfo &inputInfo, const Vector &
 }
 
 //---------------------------------------------------------
+// remove OnTakeDamage_Alive override lol
+// edit: add it back but only remove the parts where it ignores damage
 //---------------------------------------------------------
 int CNPC_Strider::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 {
@@ -3149,105 +3153,119 @@ int CNPC_Strider::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 	if ( UTIL_IsCombineBall( info.GetInflictor() ) )
 		return TakeDamageFromCombineBall( info );
 
-	if ( info.GetDamageType() == DMG_GENERIC )
-		return BaseClass::OnTakeDamage_Alive( info );
-
-	if( IsUsingAggressiveBehavior() )
+	if (IsUsingAggressiveBehavior())
 	{
 		// Any damage the player inflicts gets my attention, even if it doesn't actually harm me.
-		if ( info.GetAttacker()->IsPlayer() )
+		if (info.GetAttacker()->IsPlayer())
 		{
-			UpdateEnemyMemory( info.GetAttacker(), info.GetAttacker()->GetAbsOrigin() );
+			UpdateEnemyMemory(info.GetAttacker(), info.GetAttacker()->GetAbsOrigin());
 		}
 	}
 
+
+	if ( info.GetDamageType() == DMG_GENERIC )
+		return BaseClass::OnTakeDamage_Alive( info );
+
+
 	//int healthIncrement = 5 - ( m_iHealth / ( m_iMaxHealth / 5 ) );
-	if ( (info.GetDamageType() & DMG_BLAST) && info.GetMaxDamage() > 50 )
-	{
+	// removing the if, all damage allowed.
 		Vector headPos = BodyTarget( info.GetDamagePosition(), false );
 		
 		float dist = CalcDistanceToAABB( WorldAlignMins(), WorldAlignMaxs(), info.GetDamagePosition() - headPos );
 		// close enough to do damage?
-		if ( dist < 200 )
+		if (dist < 200)
 		{
 			bool bPlayer = info.GetAttacker()->IsPlayer();
-			if ( bPlayer )
+			if (bPlayer)
 			{
 				m_PlayerFreePass.Revoke();
-				AddFacingTarget( info.GetAttacker(), info.GetAttacker()->GetAbsOrigin(), 1.0, 2.0 );
+				AddFacingTarget(info.GetAttacker(), info.GetAttacker()->GetAbsOrigin(), 1.0, 2.0);
 
-				UpdateEnemyMemory( info.GetAttacker(), info.GetAttacker()->GetAbsOrigin() );
+				UpdateEnemyMemory(info.GetAttacker(), info.GetAttacker()->GetAbsOrigin());
 			}
 			else
-				AddFacingTarget( info.GetAttacker(), info.GetAttacker()->GetAbsOrigin(), 0.5, 2.0 );
+				AddFacingTarget(info.GetAttacker(), info.GetAttacker()->GetAbsOrigin(), 0.5, 2.0);
 
 			// Default to NPC damage value
 			int damage = 20;
 
-			if( HasSpawnFlags(SF_TAKE_MINIMAL_DAMAGE_FROM_NPCS) )
+			if (HasSpawnFlags(SF_TAKE_MINIMAL_DAMAGE_FROM_NPCS))
 				damage = 1;
 
-			if( bPlayer )
+			if (bPlayer)
 			{
-				if( g_pGameRules->IsSkillLevel(SKILL_EASY) )
+				damage = info.GetDamage();
+				if (g_pGameRules->IsSkillLevel(SKILL_EASY))
 				{
-					damage = GetMaxHealth() / sk_strider_num_missiles1.GetFloat();
+					
+					damage = damage*1.5;
 				}
-				else if( g_pGameRules->IsSkillLevel(SKILL_HARD) )
+				else if (g_pGameRules->IsSkillLevel(SKILL_HARD))
 				{
-					damage = GetMaxHealth() / sk_strider_num_missiles3.GetFloat();
+					damage = damage*0.9;
 				}
 				else // Medium, or unspecified
 				{
-					damage = GetMaxHealth() / sk_strider_num_missiles2.GetFloat();
+					damage = damage;
 				}
 			}
 
-			m_iHealth -= damage;
+			m_iHealth -= damage*dmgMul+dmgAdd;
 
-			m_OnDamaged.FireOutput( info.GetAttacker(), this);
+			m_OnDamaged.FireOutput(info.GetAttacker(), this);
 
-			if( info.GetAttacker()->IsPlayer() )
+			if (info.GetAttacker()->IsPlayer())
 			{
-				m_OnDamagedByPlayer.FireOutput( info.GetAttacker(), this );
+				m_OnDamagedByPlayer.FireOutput(info.GetAttacker(), this);
 
 				// This also counts as being harmed by player's squad.
-				m_OnDamagedByPlayerSquad.FireOutput( info.GetAttacker(), this );
+				m_OnDamagedByPlayerSquad.FireOutput(info.GetAttacker(), this);
 			}
 			else
 			{
 				// See if the person that injured me is an NPC.
-				CAI_BaseNPC *pAttacker = dynamic_cast<CAI_BaseNPC *>( info.GetAttacker() );
-				CBasePlayer *pPlayer = AI_GetSinglePlayer();
+				CAI_BaseNPC* pAttacker = dynamic_cast<CAI_BaseNPC*>(info.GetAttacker());
+				CBasePlayer* pPlayer = AI_GetSinglePlayer();
 
-				if( pAttacker && pAttacker->IsAlive() && pPlayer )
+				if (pAttacker && pAttacker->IsAlive() && pPlayer)
 				{
-					if( pAttacker->GetSquad() != NULL && pAttacker->IsInPlayerSquad() )
+					if (pAttacker->GetSquad() != NULL && pAttacker->IsInPlayerSquad())
 					{
-						m_OnDamagedByPlayerSquad.FireOutput( info.GetAttacker(), this );
+						m_OnDamagedByPlayerSquad.FireOutput(info.GetAttacker(), this);
 					}
 				}
 			}
 
-			if ( m_iHealth <= ( m_iMaxHealth / 2 ) )
+			if (m_iHealth <= (m_iMaxHealth / 2))
 			{
 				m_OnHalfHealth.FireOutput(this, this);
 			}
+			// TODO implement
+			int m_iTimeSinceFlinch = STRIDER_FLINCH_INTERVAL + 1;
+			float rand = RandomFloat();
+			if (info.GetDamageType() == DMG_BLAST) {
+				RestartGesture(ACT_GESTURE_SMALL_FLINCH);
+				PainSound(info);
 
-			RestartGesture( ACT_GESTURE_SMALL_FLINCH );
-			PainSound( info );
+				// Interrupt our gun during the flinch
+				m_pMinigun->StopShootingForSeconds(this, m_pMinigun->GetTarget(), 1.1f);
+			} else
+			if (damage > 30 && m_iTimeSinceFlinch > STRIDER_FLINCH_INTERVAL && rand >0.7F) {
+				RestartGesture(ACT_GESTURE_SMALL_FLINCH);
+				PainSound(info);
 
-			// Interrupt our gun during the flinch
-			m_pMinigun->StopShootingForSeconds( this, m_pMinigun->GetTarget(), 1.1f );
+				// Interrupt our gun during the flinch
+				m_pMinigun->StopShootingForSeconds(this, m_pMinigun->GetTarget(), 1.1f);
+			}
 
-			GetEnemies()->OnTookDamageFrom( info.GetAttacker() );
+			GetEnemies()->OnTookDamageFrom(info.GetAttacker());
 
-			if( !IsSmoking() && m_iHealth <= sk_strider_health.GetInt() / 2 )
+			if (!IsSmoking() && m_iHealth <= sk_strider_health.GetInt() / 2)
 			{
 				StartSmoking();
 			}
 			return damage;
-		}
+
 
 // NOTE: Currently radius damage doesn't even call this because it uses the origin, not the box for distance
 #if 0
@@ -3265,9 +3283,9 @@ int CNPC_Strider::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 		return 1;
 	}
 #endif
-
 	return 0;
 }
+
 
 //---------------------------------------------------------
 //---------------------------------------------------------
@@ -4128,6 +4146,8 @@ bool CNPC_Strider::AimCannonAt( CBaseEntity *pEntity, float flInterval )
 
 //---------------------------------------------------------
 //---------------------------------------------------------
+
+
 void CNPC_Strider::FireCannon() 
 {
 	ASSERT( m_hCannonTarget != NULL );
@@ -4416,6 +4436,7 @@ void CNPC_Strider::StompHit( int followerBoneIndex )
 	//NDebugOverlay::Box( hitPosition, Vector(-16,-16,-16), Vector(16,16,16), 0, 255, 0, 255, 1.0 );
 	CBaseEntity *pEnemy = GetEnemy();
 	CAI_BaseNPC *pNPC = pEnemy ? pEnemy->MyNPCPointer() : NULL;
+
 	bool bIsValidTarget = pNPC && pNPC->GetModelPtr();
 	if ( HasSpawnFlags( SF_CAN_STOMP_PLAYER ) )
 	{
@@ -4439,8 +4460,18 @@ void CNPC_Strider::StompHit( int followerBoneIndex )
 
 	CPASAttenuationFilter filter( this, "NPC_Strider.Skewer" );
 	EmitSound( filter, 0, "NPC_Strider.Skewer", &hitPosition );
+	int dmg = 500;
+	if (pEnemy->IsCombatCharacter()) {
+		CBaseCombatCharacter* pBCC = dynamic_cast<CBaseCombatCharacter*>(pEnemy);
+		if (pBCC) {
+			pBCC->AddStatusEffect(ST_BLEED, 10*11, this);
+		}
+	}
 
-	CTakeDamageInfo damageInfo( this, this, 500, DMG_CRUSH );
+	if (pEnemy->IsPlayer()) {
+		dmg = 40;
+	}
+	CTakeDamageInfo damageInfo( this, this, dmg, DMG_CRUSH );
 	Vector forward;
 	pEnemy->GetVectors( &forward, NULL, NULL );
 	damageInfo.SetDamagePosition( hitPosition );
@@ -4449,6 +4480,8 @@ void CNPC_Strider::StompHit( int followerBoneIndex )
 
 	if ( !pNPC || pNPC->IsAlive() )
 		return;
+
+
 
 	Vector vecBloodDelta = footPosition - vecStabPos;
 	vecBloodDelta.z = 0; // effect looks better 

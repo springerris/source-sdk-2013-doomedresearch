@@ -337,6 +337,8 @@ ConVar	sk_max_buckshot			( "sk_max_buckshot","0", FCVAR_REPLICATED);
 ConVar	sk_plr_num_shotgun_pellets( "sk_plr_num_shotgun_pellets","7", FCVAR_REPLICATED);
 #ifdef MAPBASE
 ConVar	sk_plr_num_shotgun_pellets_double( "sk_plr_num_shotgun_pellets_double","12", FCVAR_REPLICATED);
+ConVar	sk_plr_shotgun_double_velocity("sk_plr_shotgun_double_velocity", "500", FCVAR_REPLICATED);
+ConVar	sk_plr_shotgun_double_velocity_groundmul("sk_plr_shotgun_double_velocity_groundmul", "2.0", FCVAR_REPLICATED);
 ConVar	sk_npc_num_shotgun_pellets( "sk_npc_num_shotgun_pellets","8", FCVAR_REPLICATED);
 #endif
 

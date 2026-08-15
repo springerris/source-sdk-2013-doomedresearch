@@ -3,7 +3,6 @@
 // Purpose: 
 //
 //=============================================================================//
-
 #include "cbase.h"
 #include "npcevent.h"
 #include "basehlcombatweapon_shared.h"
@@ -25,6 +24,7 @@
 #include "gamestats.h"
 #include "decals.h"
 
+
 #ifdef PORTAL
 	#include "portal_util_shared.h"
 #endif
@@ -34,7 +34,7 @@
 
 //#define BOLT_MODEL			"models/crossbow_bolt.mdl"
 #define BOLT_MODEL	"models/weapons/w_missile_closed.mdl"
-
+#define SNIPERBOLT_WIDTH 16.0
 #define BOLT_AIR_VELOCITY	2500
 #define BOLT_WATER_VELOCITY	1500
 
@@ -250,6 +250,8 @@ void CCrossbowBolt::InputSetDamage( inputdata_t &inputdata )
 #endif
 
 //-----------------------------------------------------------------------------
+// DR changes: make bolt penetrate enemies so even if it spawns close it still won't break the vscript penetration logic
+// (that will probably be moved to game code)
 //-----------------------------------------------------------------------------
 void CCrossbowBolt::BoltTouch( CBaseEntity *pOther )
 {
@@ -371,18 +373,19 @@ void CCrossbowBolt::BoltTouch( CBaseEntity *pOther )
 				return;
 			}
 		}
-
-		SetAbsVelocity( Vector( 0, 0, 0 ) );
+		// DR: commenting out lines that stop the bolt
+		
+		//SetAbsVelocity( Vector( 0, 0, 0 ) );
 
 		// play body "thwack" sound
-		EmitSound( "Weapon_Crossbow.BoltHitBody" );
+		//EmitSound( "Weapon_Crossbow.BoltHitBody" );
 
 		Vector vForward;
 
 		AngleVectors( GetAbsAngles(), &vForward );
 		VectorNormalize ( vForward );
 
-		UTIL_TraceLine( GetAbsOrigin(),	GetAbsOrigin() + vForward * 128, MASK_BLOCKLOS, pOther, COLLISION_GROUP_NONE, &tr2 );
+		//UTIL_TraceLine( GetAbsOrigin(),	GetAbsOrigin() + vForward * 128, MASK_BLOCKLOS, pOther, COLLISION_GROUP_NONE, &tr2 );
 
 		if ( tr2.fraction != 1.0f )
 		{
@@ -401,13 +404,14 @@ void CCrossbowBolt::BoltTouch( CBaseEntity *pOther )
 			}
 		}
 		
-		SetTouch( NULL );
-		SetThink( NULL );
-
+		//SetTouch( NULL );
+		//SetThink( NULL );
+		/*
 		if ( !g_pGameRules->IsMultiplayer() )
 		{
 			UTIL_Remove( this );
 		}
+		*/
 	}
 	else
 	{
@@ -590,6 +594,7 @@ private:
 	void	SetSkin( int skinNum );
 	void	CheckZoomToggle( void );
 	void	FireBolt( void );
+	void	FireSniperBolt();
 #ifdef MAPBASE
 	void	SetBolt( int iSetting );
 	void	FireNPCBolt( CAI_BaseNPC *pOwner, Vector &vecShootOrigin, Vector &vecShootDir );
@@ -818,10 +823,10 @@ void CWeaponCrossbow::Precache( void )
 //-----------------------------------------------------------------------------
 void CWeaponCrossbow::PrimaryAttack( void )
 {
-	if ( m_bInZoom && g_pGameRules->IsMultiplayer() )
+	if ( m_bInZoom )
 	{
-//		FireSniperBolt();
-		FireBolt();
+		FireSniperBolt();
+	
 	}
 	else
 	{
@@ -1004,6 +1009,117 @@ void CWeaponCrossbow::FireBolt( void )
 
 	DoLoadEffect();
 	SetChargerState( CHARGER_STATE_DISCHARGE );
+}
+
+
+void CWeaponCrossbow::FireSniperBolt(void)
+{
+	ConVar* r_visualizetraces = cvar->FindVar("r_visualizetraces");
+	if (m_iClip1 <= 0)
+	{
+		if (!m_bFireOnEmpty)
+		{
+			Reload();
+		}
+		else
+		{
+			WeaponSound(EMPTY);
+			m_flNextPrimaryAttack = 0.15;
+		}
+
+		return;
+	}
+
+	CBasePlayer* pOwner = ToBasePlayer(GetOwner());
+
+	if (pOwner == NULL)
+		return;
+
+	pOwner->RumbleEffect(RUMBLE_357, 0, RUMBLE_FLAG_RESTART);
+
+	Vector vecAiming = pOwner->GetAutoaimVector(0);
+	Vector eyeRight;
+	pOwner->EyeVectors(NULL, &eyeRight, NULL);
+	Vector vecSrc = pOwner->Weapon_ShootPosition();
+
+	int i = 0;
+	//bool stopped = false;
+	trace_t tr;
+	CBaseEntity* ignore = pOwner;
+
+	UTIL_TraceHull(vecSrc, vecSrc + vecAiming * MAX_TRACE_LENGTH, Vector(-SNIPERBOLT_WIDTH / 2, -SNIPERBOLT_WIDTH / 2, -SNIPERBOLT_WIDTH / 2), Vector(SNIPERBOLT_WIDTH / 2, SNIPERBOLT_WIDTH / 2, SNIPERBOLT_WIDTH / 2), MASK_SHOT, ignore, COLLISION_GROUP_PROJECTILE, &tr);
+	while (tr.m_pEnt && !tr.DidHitWorld() && i < MAXCOUNTERS) {
+		CBaseEntity* ent = tr.m_pEnt;
+#ifdef DEBUG
+		DevMsg("TRACE HIT %s %s ON ITERATION %d\n", ent->GetClassname(), ent->GetEntityNameAsCStr(), i);
+#endif // DEBUG
+
+		if (r_visualizetraces->GetBool()) {
+			DebugDrawLine(vecSrc, vecSrc + vecAiming * MAX_TRACE_LENGTH, 150, 150, 0, true, 3.5);
+			NDebugOverlay::Box(tr.endpos, Vector(SNIPERBOLT_WIDTH / 2, SNIPERBOLT_WIDTH / 2, SNIPERBOLT_WIDTH / 2), Vector(-SNIPERBOLT_WIDTH / 2, -SNIPERBOLT_WIDTH / 2, -SNIPERBOLT_WIDTH / 2), 150, 1250, 0, 200, 3.5);
+		}
+		
+		if (ent->GetFlags() & FL_NPC) {
+			if (CBaseCombatCharacter* pBCC = dynamic_cast<CBaseCombatCharacter*>(ent)) {
+				//pBCC->AddStatusEffect(ST_CROSSBOW_TEMP_IMMUNITY, 100, pOwner);
+				pBCC->IgniteLifetime(5.0);
+				CTakeDamageInfo dmg = CTakeDamageInfo(this, GetOwnerEntity(), sk_plr_dmg_crossbow.GetInt() * 10, DMG_BLAST);
+				pBCC->TakeDamage(dmg);
+			}
+		}
+		else
+			if (ent->GetMoveType() == MOVETYPE_VPHYSICS) {
+				
+				CTakeDamageInfo dmg = CTakeDamageInfo(this, GetOwnerEntity(), sk_plr_dmg_crossbow.GetInt() * 10, DMG_BLAST);
+				ent->TakeDamage(dmg);
+
+			}
+		ignore = ent;
+		vecSrc = tr.endpos;
+		UTIL_TraceHull(vecSrc, vecSrc + vecAiming * MAX_TRACE_LENGTH, Vector(-SNIPERBOLT_WIDTH / 2, -SNIPERBOLT_WIDTH / 2, -SNIPERBOLT_WIDTH / 2), Vector(SNIPERBOLT_WIDTH / 2, SNIPERBOLT_WIDTH / 2, SNIPERBOLT_WIDTH / 2), MASK_SHOT, ignore, COLLISION_GROUP_PROJECTILE, &tr);
+		i++;
+	}
+
+
+
+
+	m_iClip1--;
+
+	CSpriteTrail* trail = CSpriteTrail::SpriteTrailCreate("sprites/laserbeam.vmt", pOwner->Weapon_ShootPosition()+ eyeRight*0.5, false);
+	trail->SetLifeTime(1.0);
+	trail->SetStartWidth(SNIPERBOLT_WIDTH*1.5);
+	trail->SetEndWidth(SNIPERBOLT_WIDTH*1.5);
+	trail->SetAbsVelocity(vecAiming * 16000);
+	trail->SetTransparency(kRenderTransAdd, 225, 112, 37, 255, kRenderFxNone);
+
+	trail->SetScale(1);
+	trail->TurnOn();
+	trail->DieIn(1.0);
+	//variant_t value;
+	//g_EventQueue.AddEvent(trail, "kill", value, 0.2, this, this);
+	//ThinkSet(static_cast <void (CBaseEntity::*)(void)> (&CSpriteTrail::Think), 0, 0);
+	//SetThink(trail, UTIL_RemoveImmediate(trail));
+	//trail->SetNextThink(0.2);
+
+	pOwner->ViewPunch(QAngle(-5, 0, 0));
+
+	WeaponSound(SINGLE);
+	WeaponSound(SPECIAL2);
+
+	CSoundEnt::InsertSound(SOUND_COMBAT, GetAbsOrigin(), 200, 0.2);
+
+	SendWeaponAnim(ACT_VM_PRIMARYATTACK);
+
+	if (!m_iClip1 && pOwner->GetAmmoCount(m_iPrimaryAmmoType) <= 0)
+	{
+		// HEV suit - indicate out of ammo condition
+		pOwner->SetSuitUpdate("!HEV_AMO0", FALSE, 0);
+	}
+
+	m_flNextPrimaryAttack = m_flNextSecondaryAttack = gpGlobals->curtime + 0.75;
+
+	DoLoadEffect();
+	SetChargerState(CHARGER_STATE_DISCHARGE);
 }
 
 #ifdef MAPBASE

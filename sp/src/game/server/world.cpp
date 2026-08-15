@@ -401,6 +401,8 @@ BEGIN_DATADESC( CWorld )
 
 #ifdef MAPBASE
 	DEFINE_INPUTFUNC( FIELD_STRING, "SetChapterTitle", InputSetChapterTitle ),
+	DEFINE_INPUTFUNC( FIELD_INTEGER, "DoTimeStopFor", InputDoTimeStopFor),
+
 #endif
 
 END_DATADESC()
@@ -522,6 +524,17 @@ void CWorld::DecalTrace( trace_t *pTrace, char const *decalName)
 	{
 		te->WorldDecal( filter, 0.0, &pTrace->endpos, index );
 	}
+}
+
+void CWorld::ReturnToPrevTimescale()
+{
+
+	char newCommand[32] = "host_timescale ";
+	char newCommand2[16] = "";
+	gcvt(m_flPrevTimeScale, 8, newCommand2);
+	V_strcat(newCommand, newCommand2, 32);
+	DevMsg("%s\n", newCommand);
+	engine->ServerCommand((newCommand));
 }
 
 void CWorld::RegisterSharedActivities( void )
@@ -773,5 +786,17 @@ bool CWorld::IsColdWorld( void )
 void CWorld::InputSetChapterTitle( inputdata_t &inputdata )
 {
 	m_iszChapterTitle.Set( inputdata.value.StringID() );
+}
+void CWorld::InputDoTimeStopFor(inputdata_t& inputdata)
+{
+	static const ConVar* pHostTimescale;
+	pHostTimescale = cvar->FindVar("host_timescale");
+	float nextThink = 0.1;
+	nextThink = inputdata.value.Int() / 66.0f;
+	m_flPrevTimeScale = pHostTimescale->GetFloat();
+	DevMsg("%.8f\n", nextThink);
+	//engine->ServerCommand("host_timescale 0.05");
+	//SetThink(&CWorld::ReturnToPrevTimescale);
+	//SetNextThink(gpGlobals->curtime + nextThink);
 }
 #endif

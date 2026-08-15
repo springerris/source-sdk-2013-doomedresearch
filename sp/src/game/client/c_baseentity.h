@@ -1116,7 +1116,8 @@ public:
 	void				SetAbsVelocity( const Vector &vecVelocity );
 	const Vector&		GetLocalVelocity() const;
 	const Vector&		GetAbsVelocity( ) const;
-
+	void				ApplyLocalVelocityImpulseUnsafe(const Vector& inVecImpulse);	
+	void				ApplyAbsVelocityImpulseUnsafe(const Vector& inVecImpulse);
 	void				ApplyLocalVelocityImpulse( const Vector &vecImpulse );
 	void				ApplyAbsVelocityImpulse( const Vector &vecImpulse );
 	void				ApplyLocalAngularVelocityImpulse( const AngularImpulse &angImpulse );

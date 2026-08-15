@@ -15,6 +15,7 @@
 #include "physics_bone_follower.h"
 #include "player_pickup.h"
 #include "positionwatcher.h"
+#include "SpriteTrail.h"
 
 //=============================================================================================================
 // PROP TYPES
@@ -495,5 +496,124 @@ int PropBreakablePrecacheAll( string_t modelName );
 extern ConVar func_breakdmg_bullet;
 extern ConVar func_breakdmg_club;
 extern ConVar func_breakdmg_explosive;
+
+
+enum BALLTYPE {
+	YLW,
+	YLW_HUGE,
+	CYAN
+
+};
+
+#define PROJECTILE_SPEED 100
+
+class CProjectileProp : public CBreakableProp
+{
+	DECLARE_CLASS(CProjectileProp, CBreakableProp);
+
+public:
+	~CProjectileProp();
+	CProjectileProp();
+	CProjectileProp(BALLTYPE t);
+
+	static CProjectileProp* ShootProjectile(BALLTYPE t, float vel, Vector from, QAngle angle, CBaseEntity* owner);
+	//void Activate();
+	void SetupSprites();
+	void Spawn(void);
+	void Precache();
+	bool CreateVPhysics(void);
+	bool OverridePropdata(void);
+
+#ifdef MAPBASE
+	// Attempt to replace a dynamic_cast
+	virtual bool IsPropPhysics() { return true; }
+#endif
+
+	virtual void VPhysicsUpdate(IPhysicsObject* pPhysics);
+	virtual void VPhysicsCollision(int index, gamevcollisionevent_t* pEvent);
+
+	void InputEnableMotion(inputdata_t& inputdata);
+	void InputDisableMotion(inputdata_t& inputdata);
+	void InputDisableFloating(inputdata_t& inputdata);
+#ifdef MAPBASE
+	void InputSetDebris(inputdata_t& inputdata);
+#endif
+
+	void EnableMotion(void);
+	bool CanBePickedUpByPhyscannon(void);
+	void OnPhysGunPickup(CBasePlayer* pPhysGunUser, PhysGunPickup_t reason);
+	void OnPhysGunPull(CBasePlayer* pPhysGunUser);
+	void OnPhysGunDrop(CBasePlayer* pPhysGunUser, PhysGunDrop_t reason);
+
+	bool GetPropDataAngles(const char* pKeyName, QAngle& vecAngles);
+	float GetCarryDistanceOffset(void);
+
+	int ObjectCaps();
+	void Use(CBaseEntity* pActivator, CBaseEntity* pCaller, USE_TYPE useType, float value);
+
+	void GetMassCenter(Vector* pMassCenter);
+	float GetMass() const;
+
+	void ClearFlagsThink(void);
+
+	virtual int OnTakeDamage(const CTakeDamageInfo& info);
+	int DrawDebugTextOverlays(void);
+	void SetMaterials(BALLTYPE t);
+	bool IsGib();
+	DECLARE_DATADESC();
+
+	// Specific interactions
+	void	HandleAnyCollisionInteractions(int index, gamevcollisionevent_t* pEvent);
+
+	string_t GetPhysOverrideScript(void) { return m_iszOverrideScript; }
+	float	GetMassScale(void) { return m_massScale; }
+
+private:
+	// Compute impulse to apply to the enabled entity.
+	void ComputeEnablingImpulse(int index, gamevcollisionevent_t* pEvent);
+
+	COutputEvent m_MotionEnabled;
+	COutputEvent m_OnPhysGunPickup;
+	COutputEvent m_OnPhysGunPunt;
+	COutputEvent m_OnPhysGunOnlyPickup;
+	COutputEvent m_OnPhysGunPull;
+	COutputEvent m_OnPhysGunDrop;
+	COutputEvent m_OnPlayerUse;
+	COutputEvent m_OnPlayerPickup;
+	COutputEvent m_OnOutOfWorld;
+
+	float		m_massScale;
+	float		m_inertiaScale;
+	int			m_damageType;
+	string_t	m_iszOverrideScript;
+	int			m_damageToEnableMotion;
+	float		m_flForceToEnableMotion;
+
+	BALLTYPE	m_iBallType;
+	float		m_flDamage;
+	Vector		m_vecDir;
+	CHandle<CSprite>		m_handleSprite;
+	CHandle<CSpriteTrail>		m_handleTrail;
+	string_t	m_iszSpriteName;
+	string_t	m_iszTrailName;
+
+	bool		m_bThrownByPlayer;
+	bool		m_bFirstCollisionAfterLaunch;
+
+};
+
+class CProjectilePropShooter : public CLogicalEntity
+{
+	DECLARE_CLASS(CProjectilePropShooter, CLogicalEntity);
+	DECLARE_DATADESC();
+
+public:
+	CProjectilePropShooter();
+	//virtual void Spawn() override;
+	void InputShootProjectile(inputdata_t &inputdata);
+	void ShootProjectile();
+private:
+	BALLTYPE m_iBalltype;
+};
 
 #endif // PROPS_H

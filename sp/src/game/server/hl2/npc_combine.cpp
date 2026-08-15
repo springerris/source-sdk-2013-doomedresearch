@@ -498,6 +498,7 @@ void CNPC_Combine::Spawn( void )
 		m_nSkin = COMBINE_SKIN_SHOTGUNNER;
 	}
 #endif
+	SetStatusThink();
 }
 
 //-----------------------------------------------------------------------------

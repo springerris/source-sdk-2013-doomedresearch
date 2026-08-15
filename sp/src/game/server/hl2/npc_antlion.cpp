@@ -72,7 +72,8 @@ ConVar g_antlion_cascade_push( "g_antlion_cascade_push", "1", FCVAR_ARCHIVE );
  
 ConVar g_debug_antlion_worker( "g_debug_antlion_worker", "0" );
 
-extern ConVar bugbait_radius;
+extern ConVar bugbait_radius
+;
 
 int AE_ANTLION_WALK_FOOTSTEP;
 int AE_ANTLION_MELEE_HIT1;
@@ -4056,6 +4057,9 @@ void CNPC_Antlion::GatherEnemyConditions( CBaseEntity *pEnemy )
 //-----------------------------------------------------------------------------
 bool CNPC_Antlion::ShouldGib( const CTakeDamageInfo &info )
 {
+	// DR: never gib as hologram
+	if (this->CheckHavingStatusEffect(ST_HOLOGRAM)) return false;
+
 	// If we're being hoisted, we only want to gib when the barnacle hurts us with his bite!
 	if ( IsEFlagSet( EFL_IS_BEING_LIFTED_BY_BARNACLE ) )
 	{
@@ -4299,6 +4303,20 @@ void CNPC_Antlion::InputEnableJump( inputdata_t &inputdata )
 {
 	m_bDisableJump = false;
 	CapabilitiesAdd( bits_CAP_MOVE_JUMP );
+}
+
+void CNPC_Antlion::rootCharacter() {
+
+	CBaseCombatCharacter::rootCharacter();
+
+	m_bDisableJump = false;
+	CapabilitiesRemove(bits_CAP_MOVE_JUMP);
+}
+
+void CNPC_Antlion::unrootCharacter() {
+	CBaseCombatCharacter::unrootCharacter();
+	m_bDisableJump = false;
+	CapabilitiesAdd(bits_CAP_MOVE_JUMP);
 }
 
 //-----------------------------------------------------------------------------

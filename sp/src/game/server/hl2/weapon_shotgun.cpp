@@ -26,6 +26,8 @@ extern ConVar sk_auto_reload_time;
 extern ConVar sk_plr_num_shotgun_pellets;
 #ifdef MAPBASE
 extern ConVar sk_plr_num_shotgun_pellets_double;
+extern ConVar sk_plr_shotgun_double_velocity_groundmul;
+extern ConVar sk_plr_shotgun_double_velocity;
 extern ConVar sk_npc_num_shotgun_pellets;
 #endif
 
@@ -644,11 +646,20 @@ void CWeaponShotgun::SecondaryAttack( void )
 
 	// Fire the bullets
 #ifdef MAPBASE
+	
 	pPlayer->FireBullets( sk_plr_num_shotgun_pellets_double.GetInt(), vecSrc, vecAiming, GetBulletSpread(), MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 0, -1, -1, 0, NULL, false, false );
+	// DR: Add knockback
+	if (pPlayer->GetFlags() & FL_ONGROUND) {
+		pPlayer->ApplyAbsVelocityImpulse(-vecAiming * sk_plr_shotgun_double_velocity.GetFloat() * sk_plr_shotgun_double_velocity_groundmul.GetFloat());
+	}
+	else {
+		pPlayer->ApplyAbsVelocityImpulse(-vecAiming * sk_plr_shotgun_double_velocity.GetFloat());
+	}
 #else
 	pPlayer->FireBullets( 12, vecSrc, vecAiming, GetBulletSpread(), MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 0, -1, -1, 0, NULL, false, false );
 #endif
-	pPlayer->ViewPunch( QAngle(random->RandomFloat( -5, 5 ),0,0) );
+	// DR: Punchier, more random.
+	pPlayer->ViewPunch( QAngle(random->RandomFloat(0.8,1.2)*10, 0, 0));
 
 	pPlayer->SetMuzzleFlashTime( gpGlobals->curtime + 1.0 );
 

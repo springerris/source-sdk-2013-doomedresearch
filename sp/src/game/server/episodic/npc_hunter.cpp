@@ -91,10 +91,12 @@ ConVar sk_hunter_dmg_charge( "sk_hunter_dmg_charge", "20" );
 ConVar hunter_flechette_max_range( "hunter_flechette_max_range", "1200" );
 ConVar hunter_flechette_min_range( "hunter_flechette_min_range", "100" );
 ConVar hunter_flechette_volley_size( "hunter_flechette_volley_size", "8" );
+ConVar hunter_minelayer_volley_size("hunter_minelayer_volley_size", "3");
 ConVar hunter_flechette_speed( "hunter_flechette_speed", "2000" );
 ConVar sk_hunter_dmg_flechette( "sk_hunter_dmg_flechette", "4.0" );
 ConVar sk_hunter_flechette_explode_dmg( "sk_hunter_flechette_explode_dmg", "12.0" );
 ConVar sk_hunter_flechette_explode_radius( "sk_hunter_flechette_explode_radius", "128.0" );
+ConVar sk_hunter_flechette_missile_radius("sk_hunter_flechette_missile_radius", "196.0");
 ConVar hunter_flechette_explode_delay( "hunter_flechette_explode_delay", "2.5" );
 ConVar hunter_flechette_delay( "hunter_flechette_delay", "0.1" );
 ConVar hunter_first_flechette_delay( "hunter_first_flechette_delay", "0.5" );
@@ -180,6 +182,12 @@ ConVar hunter_siege_frequency( "hunter_siege_frequency", "12" );
 
 #define HUNTER_SIEGE_MAX_DIST_MODIFIER 2.0f
 
+enum HunterSize {
+	HUNTER_SIZE_TINY,
+	HUNTER_SIZE_NORMAL,
+	HUNTER_SIZE_HUGE,
+	HUNTER_MINELAYER
+};
 //-----------------------------------------------------------------------------
 // Animation events
 //-----------------------------------------------------------------------------
@@ -314,6 +322,7 @@ bool HateThisStriderBuster( CBaseEntity *pTarget )
 //-----------------------------------------------------------------------------
 // The hunter can fire a volley of explosive flechettes.
 //-----------------------------------------------------------------------------
+static const char* s_szHunterFlechetteCheck = "HunterFlechetteCheck";
 static const char *s_szHunterFlechetteBubbles = "HunterFlechetteBubbles";
 static const char *s_szHunterFlechetteSeekThink = "HunterFlechetteSeekThink";
 static const char *s_szHunterFlechetteDangerSoundThink = "HunterFlechetteDangerSoundThink";
@@ -322,6 +331,11 @@ static int s_nHunterFlechetteImpact = -2;
 static int s_nFlechetteFuseAttach = -1;
 
 #define FLECHETTE_AIR_VELOCITY	2500
+
+enum FLECHETTE_TYPE {
+	FLECHETTE_NORMAL,
+	FLECHETTE_MISSILE
+};
 
 class CHunterFlechette : public CPhysicsProp, public IParentPropInteraction
 {
@@ -351,7 +365,7 @@ public:
 	bool CreateVPhysics();
 
 	unsigned int PhysicsSolidMaskForEntity() const;
-	static CHunterFlechette *FlechetteCreate( const Vector &vecOrigin, const QAngle &angAngles, CBaseEntity *pentOwner = NULL );
+	static CHunterFlechette *FlechetteCreate( const Vector &vecOrigin, const QAngle &angAngles, CBaseEntity *pentOwner = NULL, FLECHETTE_TYPE m_iType = FLECHETTE_NORMAL);
 
 	// IParentPropInteraction
 	void OnParentCollisionInteraction( parentCollisionInteraction_t eType, int index, gamevcollisionevent_t *pEvent );
@@ -361,13 +375,17 @@ protected:
 
 	void SetupGlobalModelData();
 
+	void StopMidair();
+
 	void StickTo( CBaseEntity *pOther, trace_t &tr );
 
+	void CheckThink();
 	void BubbleThink();
 	void DangerSoundThink();
 	void ExplodeThink();
 	void DopplerThink();
 	void SeekThink();
+	void Unstick();
 
 	bool CreateSprites( bool bBright );
 
@@ -376,6 +394,7 @@ protected:
 	Vector m_vecShootPosition;
 	EHANDLE m_hSeekTarget;
 	bool m_bThrownBack;
+	FLECHETTE_TYPE m_iType;
 
 	DECLARE_DATADESC();
 	//DECLARE_SERVERCLASS();
@@ -384,7 +403,8 @@ protected:
 LINK_ENTITY_TO_CLASS( hunter_flechette, CHunterFlechette );
 
 BEGIN_DATADESC( CHunterFlechette )
-
+	
+	DEFINE_THINKFUNC( CheckThink ),
 	DEFINE_THINKFUNC( BubbleThink ),
 	DEFINE_THINKFUNC( DangerSoundThink ),
 	DEFINE_THINKFUNC( ExplodeThink ),
@@ -405,11 +425,12 @@ END_DATADESC()
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-CHunterFlechette *CHunterFlechette::FlechetteCreate( const Vector &vecOrigin, const QAngle &angAngles, CBaseEntity *pentOwner )
+CHunterFlechette *CHunterFlechette::FlechetteCreate( const Vector &vecOrigin, const QAngle &angAngles, CBaseEntity *pentOwner, FLECHETTE_TYPE m_iType)
 {
 	// Create a new entity with CHunterFlechette private data
 	CHunterFlechette *pFlechette = (CHunterFlechette *)CreateEntityByName( "hunter_flechette" );
 	UTIL_SetOrigin( pFlechette, vecOrigin );
+	pFlechette->m_iType = m_iType;
 	pFlechette->SetAbsAngles( angAngles );
 	pFlechette->Spawn();
 	pFlechette->Activate();
@@ -540,7 +561,19 @@ void CHunterFlechette::Spawn()
 
 	SetModel( HUNTER_FLECHETTE_MODEL );
 	SetMoveType( MOVETYPE_FLYGRAVITY, MOVECOLLIDE_FLY_CUSTOM );
-	UTIL_SetSize( this, -Vector(1,1,1), Vector(1,1,1) );
+	switch (m_iType) {
+	case	FLECHETTE_NORMAL:
+		UTIL_SetSize(this, -Vector(1, 1, 1), Vector(1, 1, 1));
+		break;
+
+	case FLECHETTE_MISSILE:
+		UTIL_SetSize(this, -Vector(2, 2, 2), Vector(2, 2, 2));
+		SetModelScale(3);
+		break;
+
+
+	}
+	
 	SetSolid( SOLID_BBOX );
 	SetGravity( 0.05f );
 	SetCollisionGroup( COLLISION_GROUP_PROJECTILE );
@@ -552,6 +585,7 @@ void CHunterFlechette::Spawn()
 
 	// Make us glow until we've hit the wall
 	m_nSkin = 1;
+
 }
 
 
@@ -588,15 +622,45 @@ void CHunterFlechette::Precache()
 	PrecacheScriptSound( "NPC_Hunter.FlechetteHitWorld" );
 	PrecacheScriptSound( "NPC_Hunter.FlechettePreExplode" );
 	PrecacheScriptSound( "NPC_Hunter.FlechetteExplode" );
+	PrecacheScriptSound("NPC_Hunter.FlechetteExplode"); 
 
 	PrecacheParticleSystem( "hunter_flechette_trail_striderbuster" );
 	PrecacheParticleSystem( "hunter_flechette_trail" );
 	PrecacheParticleSystem( "hunter_projectile_explosion_1" );
+	PrecacheParticleSystem("Weapon_Combine_Ion_Cannon_Explosion_f");
+	PrecacheParticleSystem("striderbuster_attach");
 }
 
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
+
+void CHunterFlechette::StopMidair() {
+	// We're no longer flying. Stop checking for water volumes.
+	SetContextThink(NULL, 0, s_szHunterFlechetteBubbles);
+
+	// Stop seeking.
+	m_hSeekTarget = NULL;
+	SetContextThink(NULL, 0, s_szHunterFlechetteSeekThink);
+
+	// Stop checking for enemies.
+	SetContextThink(NULL, 0, s_szHunterFlechetteCheck);
+
+	//SetMoveType(MOVETYPE_NONE);
+	//SetAbsVelocity(vec3_origin);
+	SetAbsVelocity(GetAbsVelocity() / 32);
+
+	// Get ready to explode.
+	DispatchParticleEffect("striderbuster_attach", GetAbsOrigin(), GetAbsAngles(), NULL);
+	SetThink(&CHunterFlechette::DangerSoundThink);
+	SetNextThink(gpGlobals->curtime);
+
+	// Play our impact animation.
+	ResetSequence(s_nHunterFlechetteImpact);
+
+
+}
+
 void CHunterFlechette::StickTo( CBaseEntity *pOther, trace_t &tr )
 {
 	EmitSound( "NPC_Hunter.FlechetteHitWorld" );
@@ -609,6 +673,9 @@ void CHunterFlechette::StickTo( CBaseEntity *pOther, trace_t &tr )
 		SetSolid( SOLID_NONE );
 		SetSolidFlags( FSOLID_NOT_SOLID );
 	}
+
+
+
 
 	// Do an impact effect.
 	//Vector vecDir = GetAbsVelocity();
@@ -635,6 +702,21 @@ void CHunterFlechette::StickTo( CBaseEntity *pOther, trace_t &tr )
 	// Stop seeking.
 	m_hSeekTarget = NULL;
 	SetContextThink( NULL, 0, s_szHunterFlechetteSeekThink );
+
+	switch (m_iType) {
+	case FLECHETTE_NORMAL:
+		break;
+
+	case FLECHETTE_MISSILE:
+		SetThink(&CHunterFlechette::ExplodeThink);
+		if (m_iType == FLECHETTE_MISSILE) {
+			SetNextThink(gpGlobals->curtime);
+			return;
+		}
+		break;
+
+
+	}
 
 	// Get ready to explode.
 	if ( !bAttachedToBuster )
@@ -749,6 +831,10 @@ void CHunterFlechette::FlechetteTouch( CBaseEntity *pOther )
 			// We hit a physics object that survived the impact. Stick to it.
 			StickTo( pOther, tr );
 		}
+		// DR: lol what if we stick to player
+		else if (pOther->IsPlayer()) {
+			StickTo(pOther, tr);
+		}
 		else
 		{
 			SetTouch( NULL );
@@ -817,6 +903,13 @@ void CHunterFlechette::SeekThink()
 	}
 }
 
+void CHunterFlechette::Unstick()
+{
+	if (this->GetMoveParent()) {
+		
+	}
+}
+
 
 //-----------------------------------------------------------------------------
 // Play a near miss sound as we travel past the player.
@@ -860,6 +953,39 @@ void CHunterFlechette::BubbleThink()
 	UTIL_BubbleTrail( GetAbsOrigin() - GetAbsVelocity() * 0.1f, GetAbsOrigin(), 5 );
 }
 
+void CHunterFlechette::CheckThink() {
+
+	SetNextThink(gpGlobals->curtime + 0.1f, s_szHunterFlechetteCheck);
+
+	CBaseEntity* ppEnts[128];
+	Vector vecCenter = WorldSpaceCenter();
+	float flRadius = sk_hunter_flechette_missile_radius.GetFloat();
+	int nEntCount = UTIL_EntitiesInSphere(ppEnts, 128, GetAbsOrigin(), flRadius, 0);
+	//CBaseEntity* ppCandidates[256];
+	int i;
+	for (i = 0; i < nEntCount; i++)
+	{
+		if (ppEnts[i] == NULL)
+			continue;
+
+		if (CBaseCombatCharacter* pBCC = dynamic_cast<CBaseCombatCharacter*>(ppEnts[i])) {
+			// if COMBATCHAR check LoS
+			trace_t tr;
+			UTIL_TraceLine(GetAbsOrigin(), ppEnts[i]->GetAbsOrigin(), MASK_SOLID_BRUSHONLY, this, COLLISION_GROUP_NONE, &tr);
+			if (tr.fraction > 0.9) {
+				if (CBaseCombatCharacter* pBCCOwner = dynamic_cast<CBaseCombatCharacter*>(GetOwnerEntity()->MyCombatCharacterPointer())) {
+					if (pBCCOwner->IRelationType(pBCC) == D_HT) {
+						StopMidair();
+					}
+				}
+			}
+		}
+
+
+		//ppCandidates[nCandidateCount++] = ppEnts[i];
+	}
+
+}
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
@@ -875,6 +1001,9 @@ void CHunterFlechette::Shoot( Vector &vecVelocity, bool bBrightFX )
 	SetNextThink( gpGlobals->curtime );
 
 	SetContextThink( &CHunterFlechette::BubbleThink, gpGlobals->curtime + 0.1, s_szHunterFlechetteBubbles );
+	if (m_iType == FLECHETTE_MISSILE) {
+		SetContextThink(&CHunterFlechette::CheckThink, gpGlobals->curtime, s_szHunterFlechetteCheck );
+	}
 }
 
 
@@ -886,7 +1015,12 @@ void CHunterFlechette::DangerSoundThink()
 
 	CSoundEnt::InsertSound( SOUND_DANGER|SOUND_CONTEXT_EXCLUDE_COMBINE, GetAbsOrigin(), 150.0f, 0.5, this );
 	SetThink( &CHunterFlechette::ExplodeThink );
+	if (m_iType == FLECHETTE_MISSILE) {
+		SetNextThink(gpGlobals->curtime + 0.45);
+		return;
+	}
 	SetNextThink( gpGlobals->curtime + HUNTER_FLECHETTE_WARN_TIME );
+	
 }
 
 
@@ -902,18 +1036,35 @@ void CHunterFlechette::ExplodeThink()
 //-----------------------------------------------------------------------------
 void CHunterFlechette::Explode()
 {
+
 	SetSolid( SOLID_NONE );
 
 	// Don't catch self in own explosion!
 	m_takedamage = DAMAGE_NO;
 
 	EmitSound( "NPC_Hunter.FlechetteExplode" );
+
 	
 	// Move the explosion effect to the tip to reduce intersection with the world.
 	Vector vecFuse;
 	GetAttachment( s_nFlechetteFuseAttach, vecFuse );
+	float radius = sk_hunter_flechette_explode_radius.GetFloat();
+	float damage = sk_hunter_flechette_explode_dmg.GetFloat();
 	DispatchParticleEffect( "hunter_projectile_explosion_1", vecFuse, GetAbsAngles(), NULL );
+	switch (m_iType) {
+	case FLECHETTE_NORMAL:
 
+		break;
+
+	case FLECHETTE_MISSILE:
+		EmitSound("NPC_Hunter.FlechetteMissileExplode");
+		DispatchParticleEffect("Weapon_Combine_Ion_Cannon_Explosion_f", vecFuse, GetAbsAngles(), NULL);
+		radius = radius * 3;
+		damage = damage * 3;
+		break;
+
+
+	}
 	int nDamageType = DMG_DISSOLVE;
 
 	// Perf optimization - only every other explosion makes a physics force. This is
@@ -925,8 +1076,17 @@ void CHunterFlechette::Explode()
 		nDamageType |= DMG_PREVENT_PHYSICS_FORCE;
 	}
 
-	RadiusDamage( CTakeDamageInfo( this, GetOwnerEntity(), sk_hunter_flechette_explode_dmg.GetFloat(), nDamageType ), GetAbsOrigin(), sk_hunter_flechette_explode_radius.GetFloat(), CLASS_NONE, NULL );
-		
+	
+
+
+	// DR: if we're stuck in the player, do 4 times less explosion damage so the player isn't obliterated
+	if (this->GetParent() && this->GetParent()->IsPlayer()) {
+		RadiusDamage(CTakeDamageInfo(this, GetOwnerEntity(), damage/4, nDamageType), GetAbsOrigin(), radius, CLASS_NONE, NULL);
+	} 	
+	else {
+		RadiusDamage(CTakeDamageInfo(this, GetOwnerEntity(), damage, nDamageType), GetAbsOrigin(), radius, CLASS_NONE, NULL);
+	}
+
     AddEffects( EF_NODRAW );
 
 	SetThink( &CBaseEntity::SUB_Remove );
@@ -1164,7 +1324,7 @@ public:
 
 	Class_T			Classify();
 	Vector			BodyTarget( const Vector &posSrc, bool bNoisy /*= true*/ );
-
+	
 	int				DrawDebugTextOverlays();
 	void			DrawDebugGeometryOverlays();
 
@@ -1323,6 +1483,7 @@ private:
 
 	void TaskFindDodgeActivity();
 
+	void rootCharacter();
 	void GatherChargeConditions();
 	void GatherIndoorOutdoorConditions();
 
@@ -1436,6 +1597,8 @@ private:
 		COND_HUNTER_SQUADMATE_FOUND_ENEMY,
 	};
 
+
+
 	enum HunterEyeStates_t
 	{
 		HUNTER_EYE_STATE_TOP_LOCKED = 0,
@@ -1449,6 +1612,7 @@ private:
 
 #ifdef MAPBASE
 	bool			m_bNoIdlePatrol;
+	HunterSize      m_size = HUNTER_SIZE_NORMAL;
 #endif
 
 	int				m_nKillingDamageType;
@@ -1555,6 +1719,7 @@ BEGIN_DATADESC( CNPC_Hunter )
 
 #ifdef MAPBASE
 	DEFINE_KEYFIELD( m_bNoIdlePatrol, FIELD_BOOLEAN, "NoIdlePatrol" ),
+	DEFINE_KEYFIELD(m_size, FIELD_INTEGER, "HunterSize"),
 #endif
 
 	DEFINE_FIELD( m_aimYaw,				FIELD_FLOAT ),
@@ -1695,8 +1860,21 @@ CNPC_Hunter::~CNPC_Hunter()
 void CNPC_Hunter::Precache()
 {
 #ifdef MAPBASE
-	if (GetModelName() == NULL_STRING)
-		SetModelName( AllocPooledString( "models/hunter.mdl" ) );
+	if (GetModelName() == NULL_STRING) {
+		switch (m_size)
+		{
+		case HUNTER_SIZE_NORMAL:
+			SetModelName(AllocPooledString("models/hunter.mdl"));
+			break;
+		case HUNTER_SIZE_TINY:
+			SetModelName(AllocPooledString("models/hunter_tiny.mdl"));
+			break;
+		case HUNTER_SIZE_HUGE:
+			SetModelName(AllocPooledString("models/hunter.mdl"));
+			break;
+		}
+	}
+		
 
 	PrecacheModel( STRING( GetModelName() ) );
 	PropBreakablePrecacheAll( GetModelName() );
@@ -1729,6 +1907,31 @@ void CNPC_Hunter::Precache()
 	PrecacheScriptSound( "NPC_Hunter.FoundEnemyAck" );
 	PrecacheScriptSound( "NPC_Hunter.DefendStrider" );
 	PrecacheScriptSound( "NPC_Hunter.HitByVehicle" );
+
+	PrecacheScriptSound("NPC_Hunter_tiny.Idle");
+	PrecacheScriptSound("NPC_Hunter_tiny.Scan");
+	PrecacheScriptSound("NPC_Hunter_tiny.Alert");
+	PrecacheScriptSound("NPC_Hunter_tiny.Pain");
+	PrecacheScriptSound("NPC_Hunter_tiny.PreCharge");
+	PrecacheScriptSound("NPC_Hunter_tiny.Angry");
+	PrecacheScriptSound("NPC_Hunter_tiny.Death");
+	PrecacheScriptSound("NPC_Hunter_tiny.FireMinigun");
+	PrecacheScriptSound("NPC_Hunter_tiny.Footstep");
+	PrecacheScriptSound("NPC_Hunter_tiny.BackFootstep");
+	PrecacheScriptSound("NPC_Hunter_tiny.FlechetteVolleyWarn");
+	PrecacheScriptSound("NPC_Hunter_tiny.FlechetteShoot");
+	PrecacheScriptSound("NPC_Hunter_tiny.FlechetteShootLoop");
+	PrecacheScriptSound("NPC_Hunter_tiny.FlankAnnounce");
+	PrecacheScriptSound("NPC_Hunter_tiny.MeleeAnnounce");
+	PrecacheScriptSound("NPC_Hunter_tiny.MeleeHit");
+	PrecacheScriptSound("NPC_Hunter_tiny.TackleAnnounce");
+	PrecacheScriptSound("NPC_Hunter_tiny.TackleHit");
+	PrecacheScriptSound("NPC_Hunter_tiny.ChargeHitEnemy");
+	PrecacheScriptSound("NPC_Hunter_tiny.ChargeHitWorld");
+	PrecacheScriptSound("NPC_Hunter_tiny.FoundEnemy");
+	PrecacheScriptSound("NPC_Hunter_tiny.FoundEnemyAck");
+	PrecacheScriptSound("NPC_Hunter_tiny.DefendStrider");
+	PrecacheScriptSound("NPC_Hunter_tiny.HitByVehicle");
 
 	PrecacheParticleSystem( "hunter_muzzle_flash" );
 	PrecacheParticleSystem( "blood_impact_synth_01" );
@@ -1766,6 +1969,9 @@ void CNPC_Hunter::Spawn()
 
 #ifdef MAPBASE
 	SetModel( STRING( GetModelName() ) );
+
+
+
 #else
 	SetModel( "models/hunter.mdl" );
 #endif
@@ -1778,12 +1984,51 @@ void CNPC_Hunter::Spawn()
 	SetDefaultEyeOffset();
 	
 	SetNavType( NAV_GROUND );
-	m_flGroundSpeed	= 500;
+	m_flGroundSpeed = 500;
+	switch (m_size)
+	{
+	case HUNTER_SIZE_NORMAL:
+
+		break;
+	case HUNTER_SIZE_TINY:
+		m_flGroundSpeed = 700;
+
+
+		break;
+	case HUNTER_SIZE_HUGE:
+		m_flGroundSpeed = 300;
+
+		break;
+	}
+	
 	m_NPCState = NPC_STATE_NONE;
 
 	SetBloodColor( DONT_BLEED );
 	
-	m_iHealth = m_iMaxHealth = sk_hunter_health.GetInt();
+	switch (m_size)
+	{
+	case HUNTER_SIZE_NORMAL:
+		SetMaxHealth(sk_hunter_health.GetInt() );
+		break;
+	case HUNTER_SIZE_TINY:
+		SetMaxHealth(sk_hunter_health.GetInt() / 2);
+
+		break;
+	case HUNTER_SIZE_HUGE:
+		SetMaxHealth(sk_hunter_health.GetInt() * 2);
+
+		break;
+	case HUNTER_MINELAYER:
+		SetMaxHealth(sk_hunter_health.GetInt() * 1.25);
+		SetSkin(2);
+	default:
+		SetMaxHealth(sk_hunter_health.GetInt());
+		break;
+
+	}
+
+	m_iHealth = m_iMaxHealth;
+
 
 	m_flFieldOfView = HUNTER_FOV_DOT;
 
@@ -1835,6 +2080,8 @@ void CNPC_Hunter::Spawn()
 	//	m_pGunFiringSound = controller.SoundCreate( filter, entindex(), "NPC_Hunter.FlechetteShootLoop" );
 	//	controller.Play( m_pGunFiringSound, 0.0, 100 );
 	//}
+
+
 }
 
 
@@ -1931,11 +2178,36 @@ void CNPC_Hunter::IdleSound()
 {
 	if ( HasCondition( COND_LOST_ENEMY ) )
 	{
-		EmitSound( "NPC_Hunter.Scan" );
+		switch (m_size)
+		{
+		case HUNTER_SIZE_NORMAL:
+			EmitSound("NPC_Hunter.Scan");
+			break;
+		case HUNTER_SIZE_TINY:
+			EmitSound("NPC_Hunter_tiny.Scan");
+			break;
+		case HUNTER_SIZE_HUGE:
+			EmitSound("NPC_Hunter.Scan");
+			break;
+		}
+
+		
 	}
 	else
 	{
-		EmitSound( "NPC_Hunter.Idle" );
+		switch (m_size)
+		{
+		case HUNTER_SIZE_NORMAL:
+			EmitSound("NPC_Hunter.Idle");
+			break;
+		case HUNTER_SIZE_TINY:
+			EmitSound("NPC_Hunter_tiny.Idle");
+			break;
+		case HUNTER_SIZE_HUGE:
+			EmitSound("NPC_Hunter.Idle");
+			break;
+		}
+		
 	}
 }
 
@@ -2216,6 +2488,7 @@ void CNPC_Hunter::NPCThink()
 }
 
 
+
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 void CNPC_Hunter::PrescheduleThink()
@@ -2248,12 +2521,22 @@ void CNPC_Hunter::PrescheduleThink()
 	}
 }
 
+// DR: stop charge when rooted.
+void CNPC_Hunter::rootCharacter() {
+	CBaseCombatCharacter::rootCharacter();
+	SetActivity(ACT_HUNTER_CHARGE_STOP);
+}
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 void CNPC_Hunter::GatherChargeConditions()
 {
 	ClearCondition( COND_HUNTER_CAN_CHARGE_ENEMY );
+
+
+	// DR: do not charge if we are rooted.
+	if ((rootState > 0)) 
+		return;
 
 	if ( !hunter_charge.GetBool() )
 		return;
@@ -3421,7 +3704,19 @@ void CNPC_Hunter::StartTask( const Task_t *pTask )
 
 		case TASK_HUNTER_ANNOUNCE_FLANK:
 		{
-			EmitSound( "NPC_Hunter.FlankAnnounce" );
+			switch (m_size)
+			{
+			case HUNTER_SIZE_NORMAL:
+				EmitSound("NPC_Hunter.FlankAnnounce");
+				break;
+			case HUNTER_SIZE_TINY:
+				EmitSound("NPC_Hunter_tiny.FlankAnnounce");
+				break;
+			case HUNTER_SIZE_HUGE:
+				EmitSound("NPC_Hunter.FlankAnnounce");
+				break;
+			}
+			
 			TaskComplete();
 			break;
 		}
@@ -3477,6 +3772,19 @@ void CNPC_Hunter::StartTask( const Task_t *pTask )
 
 				// Decide how many shots to fire.
 				int nShots = hunter_flechette_volley_size.GetInt();
+				switch (m_size)
+				{
+				case HUNTER_SIZE_TINY:
+					nShots = nShots / 3;
+					break;
+				case HUNTER_SIZE_HUGE:
+					nShots = nShots * 3;
+					break;
+				case HUNTER_MINELAYER:
+					nShots = hunter_minelayer_volley_size.GetInt();
+					break;
+				}
+
 				if ( g_pGameRules->IsSkillLevel( SKILL_EASY ) )
 				{
 					nShots--;
@@ -3484,10 +3792,12 @@ void CNPC_Hunter::StartTask( const Task_t *pTask )
 
 				// Decide when to fire the first shot.
 				float initialDelay = hunter_first_flechette_delay.GetFloat();
+
 				if ( bIsBuster )
 				{
 					initialDelay = 0; //*= 0.5;
 				}
+
 
 				BeginVolley( nShots, gpGlobals->curtime + initialDelay );
 
@@ -3772,8 +4082,15 @@ void CNPC_Hunter::RunTask( const Task_t *pTask )
 			{
 				if ( IsActivityFinished() )
 				{
-					m_flNextChargeTime = gpGlobals->curtime + hunter_charge_min_delay.GetFloat() + random->RandomFloat( 0, 2.5 ) + random->RandomFloat( 0, 2.5 );
+					// don't care about delay if we're a tiny little annoying hunter
+					if (m_size == HUNTER_SIZE_TINY) {
+						m_flNextChargeTime = gpGlobals->curtime + hunter_charge_min_delay.GetFloat() /10 + random->RandomFloat(0, 1.75);
+					}
+					else {
+						m_flNextChargeTime = gpGlobals->curtime + hunter_charge_min_delay.GetFloat() + random->RandomFloat(0, 2.5) + random->RandomFloat(0, 2.5);
+					}
 					float delayMultiplier = ( g_pGameRules->IsSkillLevel( SKILL_EASY ) ) ? 1.5 : 1.0;
+					
 					float groupDelay = gpGlobals->curtime +  ( 2.0  + random->RandomFloat( 0, 2 ) ) * delayMultiplier;
 					for ( int i = 0; i < g_Hunters.Count(); i++ )
 					{
@@ -4099,7 +4416,22 @@ void CNPC_Hunter::ChargeDamage( CBaseEntity *pTarget )
 	}
 	
 	// Player takes less damage
-	float flDamage = ( pPlayer == NULL ) ? 250 : sk_hunter_dmg_charge.GetFloat();
+	// DR: tiny hunters deal less damage 
+	float flDamage = 0.0;
+	switch (m_size)
+	{
+
+	case HUNTER_SIZE_NORMAL:
+		 flDamage = (pPlayer == NULL) ? 250 : sk_hunter_dmg_charge.GetFloat();
+		break;
+	case HUNTER_SIZE_TINY:
+		 flDamage = (pPlayer == NULL) ? 50 : sk_hunter_dmg_charge.GetFloat() / 2.5f;
+		break;
+	case HUNTER_SIZE_HUGE:
+		 flDamage = (pPlayer == NULL) ? 250 : sk_hunter_dmg_charge.GetFloat();
+		break;
+	}
+	
 	
 	// If it's being held by the player, break that bond
 	Pickup_ForcePlayerToDropThisObject( pTarget );
@@ -4337,7 +4669,19 @@ void CNPC_Hunter::HandleAnimEvent( animevent_t *pEvent )
 
 	if ( pEvent->event == AE_HUNTER_MELEE_ANNOUNCE )
 	{
-		EmitSound( "NPC_Hunter.MeleeAnnounce" );
+		switch (m_size)
+		{
+		case HUNTER_SIZE_NORMAL:
+			EmitSound("NPC_Hunter.MeleeAnnounce");
+			break;
+		case HUNTER_SIZE_TINY:
+			EmitSound("NPC_Hunter_tiny.MeleeAnnounce");
+			break;
+		case HUNTER_SIZE_HUGE:
+			EmitSound("NPC_Hunter.MeleeAnnounce");
+			break;
+		}
+		
 		return;
 	}
 		
@@ -4350,8 +4694,19 @@ void CNPC_Hunter::HandleAnimEvent( animevent_t *pEvent )
 		forward = forward * 600;
 		dir = right + forward;
 		QAngle angle( 25, 30, -20 );
-
-		MeleeAttack( HUNTER_MELEE_REACH, sk_hunter_dmg_one_slash.GetFloat(), angle, dir, HUNTER_BLOOD_LEFT_FOOT );
+		switch (m_size)
+		{
+		case HUNTER_SIZE_NORMAL:
+			MeleeAttack(HUNTER_MELEE_REACH, sk_hunter_dmg_one_slash.GetFloat(), angle, dir, HUNTER_BLOOD_LEFT_FOOT);
+			break;
+		case HUNTER_SIZE_TINY:
+			MeleeAttack(HUNTER_MELEE_REACH, sk_hunter_dmg_one_slash.GetFloat()/3, angle, dir, HUNTER_BLOOD_LEFT_FOOT);
+			break;
+		case HUNTER_SIZE_HUGE:
+			MeleeAttack(HUNTER_MELEE_REACH, sk_hunter_dmg_one_slash.GetFloat()*2, angle, dir, HUNTER_BLOOD_LEFT_FOOT);
+			break;
+		}
+		
 		return;
 	}
 
@@ -4366,7 +4721,18 @@ void CNPC_Hunter::HandleAnimEvent( animevent_t *pEvent )
 		
 		QAngle angle( 25, -30, 20 );
 
-		MeleeAttack( HUNTER_MELEE_REACH, sk_hunter_dmg_one_slash.GetFloat(), angle, dir, HUNTER_BLOOD_LEFT_FOOT );
+		switch (m_size)
+		{
+		case HUNTER_SIZE_NORMAL:
+			MeleeAttack(HUNTER_MELEE_REACH, sk_hunter_dmg_one_slash.GetFloat(), angle, dir, HUNTER_BLOOD_LEFT_FOOT);
+			break;
+		case HUNTER_SIZE_TINY:
+			MeleeAttack(HUNTER_MELEE_REACH, sk_hunter_dmg_one_slash.GetFloat() / 3, angle, dir, HUNTER_BLOOD_LEFT_FOOT);
+			break;
+		case HUNTER_SIZE_HUGE:
+			MeleeAttack(HUNTER_MELEE_REACH, sk_hunter_dmg_one_slash.GetFloat() * 2, angle, dir, HUNTER_BLOOD_LEFT_FOOT);
+			break;
+		}
 		return;
 	}
 
@@ -5364,7 +5730,19 @@ bool CNPC_Hunter::IsInLargeOutdoorMap()
 //-----------------------------------------------------------------------------
 void CNPC_Hunter::AlertSound()
 {
-	EmitSound( "NPC_Hunter.Alert" );
+	switch (m_size)
+	{
+	case HUNTER_SIZE_NORMAL:
+		EmitSound("NPC_Hunter.Alert");
+		break;
+	case HUNTER_SIZE_TINY:
+		EmitSound("NPC_Hunter_tiny.Alert");
+		break;
+	case HUNTER_SIZE_HUGE:
+		EmitSound("NPC_Hunter.Alert");
+		break;
+	}
+	
 }
 
 
@@ -5374,7 +5752,19 @@ void CNPC_Hunter::PainSound( const CTakeDamageInfo &info )
 {
 	if ( gpGlobals->curtime > m_flNextDamageTime )
 	{
-		EmitSound( "NPC_Hunter.Pain" );
+		switch (m_size)
+		{
+		case HUNTER_SIZE_NORMAL:
+			EmitSound("NPC_Hunter.Pain");
+			break;
+		case HUNTER_SIZE_TINY:
+			EmitSound("NPC_Hunter_tiny.Pain");
+			break;
+		case HUNTER_SIZE_HUGE:
+			EmitSound("NPC_Hunter.Pain");
+			break;
+		}
+		
 		m_flNextDamageTime = gpGlobals->curtime + random->RandomFloat( 0.5, 1.2 ); 
 	}
 }
@@ -5384,7 +5774,19 @@ void CNPC_Hunter::PainSound( const CTakeDamageInfo &info )
 //-----------------------------------------------------------------------------
 void CNPC_Hunter::DeathSound( const CTakeDamageInfo &info )
 {
-	EmitSound( "NPC_Hunter.Death" );
+	switch (m_size)
+	{
+	case HUNTER_SIZE_NORMAL:
+		EmitSound("NPC_Hunter.Death");
+		break;
+	case HUNTER_SIZE_TINY:
+		EmitSound("NPC_Hunter_tiny.Death");
+		break;
+	case HUNTER_SIZE_HUGE:
+		EmitSound("NPC_Hunter.Death");
+		break;
+	}
+	
 }
 
 
@@ -6126,6 +6528,11 @@ void CNPC_Hunter::GetShootDir( Vector &vecDir, const Vector &vecSrc, CBaseEntity
 		// her, not necessarily actually harm her. So shoot at the area around her feet.
 		vecBodyTarget = pTargetEntity->GetAbsOrigin();
 	}
+	else if (pTargetEntity->IsPlayer()) {
+		
+		vecBodyTarget = pTargetEntity->BodyTarget(vecSrc);
+		DebugDrawLine(vecSrc, vecBodyTarget, 255, 255, 59, false, 5);
+	}
 	else
 	{
 		vecBodyTarget = pTargetEntity->BodyTarget( vecSrc );
@@ -6140,7 +6547,9 @@ void CNPC_Hunter::GetShootDir( Vector &vecDir, const Vector &vecSrc, CBaseEntity
 	{
 		// If we're not firing at a strider buster, miss in an entertaining way for the 
 		// first three shots of each volley.
-		if ( ( nShotNum < 3 ) && ( flDist > 200 ) )
+
+		// do not do facing bs as minelayer
+		if ( ( nShotNum < 3 ) && ( flDist > 200 ) && (m_size != HUNTER_MINELAYER) )
 		{
 			Vector vecTargetForward;
 			Vector vecTargetRight;
@@ -6293,8 +6702,22 @@ bool CNPC_Hunter::ShootFlechette( CBaseEntity *pTargetEntity, bool bSingleShot )
 		Assert( false );
 		return false;
 	}
-
-	int nShotNum = hunter_flechette_volley_size.GetInt() - m_nFlechettesQueued;
+	int nShotNum = hunter_flechette_volley_size.GetInt();
+	if (!(m_size == HUNTER_MINELAYER)) {
+		switch (m_size)
+		{
+		case HUNTER_SIZE_TINY:
+			nShotNum = nShotNum / 3;
+			break;
+		case HUNTER_SIZE_HUGE:
+			nShotNum = nShotNum * 3;
+			break;
+		}
+	}
+	else {
+		nShotNum = hunter_minelayer_volley_size.GetInt();
+	}
+	nShotNum = nShotNum - m_nFlechettesQueued;
 
 	bool bStriderBuster = IsStriderBuster( pTargetEntity );
 
@@ -6318,6 +6741,7 @@ bool CNPC_Hunter::ShootFlechette( CBaseEntity *pTargetEntity, bool bSingleShot )
 	Vector vecDir;
 	GetShootDir( vecDir, vecSrc, pTargetEntity, bStriderBuster, nShotNum, bSingleShot );
 
+
 	bool bClamped = false;
 	if ( hunter_clamp_shots.GetBool() )
 	{
@@ -6326,23 +6750,41 @@ bool CNPC_Hunter::ShootFlechette( CBaseEntity *pTargetEntity, bool bSingleShot )
 
 	CShotManipulator manipulator( vecDir );
 	Vector vecShoot;
-
-	if( IsUsingSiegeTargets() && nShotNum >= 2 && (nShotNum % 2) == 0 )
-	{
-		// Near perfect accuracy for these three shots, so they are likely to fly right into the windows.
-		// NOTE! In siege behavior in the map that this behavior was designed for (ep2_outland_10), the
-		// Hunters will only ever shoot at siege targets in siege mode. If you allow Hunters in siege mode
-		// to attack players or other NPCs, this accuracy bonus will apply unless we apply a bit more logic to it.
-		vecShoot = manipulator.ApplySpread( VECTOR_CONE_1DEGREES * 0.5, 1.0f );
+	if (!(m_size == HUNTER_MINELAYER)) {
+		if (IsUsingSiegeTargets() && nShotNum >= 2 && (nShotNum % 2) == 0)
+		{
+			// Near perfect accuracy for these three shots, so they are likely to fly right into the windows.
+			// NOTE! In siege behavior in the map that this behavior was designed for (ep2_outland_10), the
+			// Hunters will only ever shoot at siege targets in siege mode. If you allow Hunters in siege mode
+			// to attack players or other NPCs, this accuracy bonus will apply unless we apply a bit more logic to it.
+			vecShoot = manipulator.ApplySpread(VECTOR_CONE_1DEGREES * 0.5, 1.0f);
+		}
+		else
+		{
+			vecShoot = manipulator.ApplySpread(VECTOR_CONE_4DEGREES, 1.0f);
+		}
 	}
-	else
-	{
-		vecShoot = manipulator.ApplySpread( VECTOR_CONE_4DEGREES, 1.0f );
+	else {
+		vecShoot = manipulator.ApplySpread(VECTOR_CONE_1DEGREES * 0.25, 0.05f);
 	}
 
 	QAngle angShoot;
 	VectorAngles( vecShoot, angShoot );
 
+	if ((m_size == HUNTER_MINELAYER) && (nShotNum < 1)) {
+		float rand = RandomFloat();
+		if (rand > 0.2) {
+			CHunterFlechette* pFlechette = CHunterFlechette::FlechetteCreate(vecSrc, angShoot, this, FLECHETTE_MISSILE);
+			pFlechette->AddEffects(EF_NOSHADOW);
+			vecShoot *= hunter_flechette_speed.GetFloat();
+			pFlechette->Shoot(vecShoot, bStriderBuster);
+			nShotNum = 0;
+			m_nFlechettesQueued = 0;
+			return bClamped;
+
+		}
+
+	}
 	CHunterFlechette *pFlechette = CHunterFlechette::FlechetteCreate( vecSrc, angShoot, this );
 
 	pFlechette->AddEffects( EF_NOSHADOW );
@@ -6350,6 +6792,52 @@ bool CNPC_Hunter::ShootFlechette( CBaseEntity *pTargetEntity, bool bSingleShot )
 	vecShoot *= hunter_flechette_speed.GetFloat();
 
 	pFlechette->Shoot( vecShoot, bStriderBuster );
+
+	if (m_size == HUNTER_MINELAYER) {
+		Vector eyeRight;
+		AngleVectors(angShoot,NULL,&eyeRight,NULL);
+		eyeRight.NormalizeInPlace();
+		Vector vecAimingL1 = vecShoot.Normalized() - eyeRight * VECTOR_CONE_20DEGREES.z;
+		Vector vecAimingR1 = vecShoot.Normalized() + eyeRight * VECTOR_CONE_20DEGREES.z;
+		Vector vecAimingL2 = vecShoot.Normalized() - eyeRight * VECTOR_CONE_20DEGREES.z *2;
+		Vector vecAimingR2 = vecShoot.Normalized() + eyeRight * VECTOR_CONE_20DEGREES.z *2;
+		QAngle A[4];
+		VectorAngles(vecAimingL1, A[1]);
+		VectorAngles(vecAimingR1, A[2]);
+		VectorAngles(vecAimingL2, A[0]);
+		VectorAngles(vecAimingR2, A[3]);
+#ifdef DEBUG
+		for (int i = 0; i < 2; i++) {
+			DevMsg("FLECHETTE ANGLES[i]: %f %f %f\n", A[i].x, A[i].y, A[i].z);
+		}
+		DevMsg("FLECHETTE ANGLES CENTER: %f %f %f\n", angShoot.x, angShoot.y, angShoot.z);
+
+		for (int i = 2; i < 4; i++) {
+			DevMsg("FLECHETTE ANGLES[i]: %f %f %f\n", A[i].x, A[i].y, A[i].z);
+		}
+
+		DebugDrawLine(vecSrc, vecAimingL1 * 200, 200, 100, 20, false, 5);
+		DebugDrawLine(vecSrc, vecAimingR1 * 200, 200, 100, 20, false, 5);
+		DebugDrawLine(vecSrc, vecAimingL2 * 200, 200, 100, 20, false, 5);
+		DebugDrawLine(vecSrc, vecAimingR2 * 200, 200, 100, 20, false, 5);
+		DebugDrawLine(vecSrc, vecShoot.Normalized() * 200, 200, 100, 20, false, 5);
+
+#endif // DEBUG
+
+		CHunterFlechette* pFlechette1 = CHunterFlechette::FlechetteCreate(vecSrc - eyeRight*1, A[0], this);
+		CHunterFlechette* pFlechette2 = CHunterFlechette::FlechetteCreate(vecSrc + eyeRight*1, A[1], this);
+		CHunterFlechette* pFlechette3 = CHunterFlechette::FlechetteCreate(vecSrc - eyeRight*2, A[2], this);
+		CHunterFlechette* pFlechette4 = CHunterFlechette::FlechetteCreate(vecSrc + eyeRight*2, A[3], this);
+		pFlechette1->AddEffects(EF_NOSHADOW);
+		pFlechette2->AddEffects(EF_NOSHADOW);
+		pFlechette3->AddEffects(EF_NOSHADOW);
+		pFlechette4->AddEffects(EF_NOSHADOW);
+		pFlechette1->Shoot(vecAimingL1* hunter_flechette_speed.GetFloat(), bStriderBuster);
+		pFlechette2->Shoot(vecAimingR1* hunter_flechette_speed.GetFloat(), bStriderBuster);
+		pFlechette3->Shoot(vecAimingL2* hunter_flechette_speed.GetFloat(), bStriderBuster);
+		pFlechette4->Shoot(vecAimingR2* hunter_flechette_speed.GetFloat(), bStriderBuster);
+
+	}
 
 	if ( ShouldSeekTarget( pTargetEntity, bStriderBuster ) )
 	{

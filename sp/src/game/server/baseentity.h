@@ -594,6 +594,7 @@ protected:
 public:
 	virtual void PostConstructor( const char *szClassname );
 	virtual void PostClientActive( void );
+
 	virtual void ParseMapData( CEntityMapData *mapData );
 	virtual bool KeyValue( const char *szKeyName, const char *szValue );
 	virtual bool KeyValue( const char *szKeyName, float flValue );
@@ -704,6 +705,14 @@ public:
 	//
 	// Input handlers.
 	//
+
+
+	void InputAddToBossList(inputdata_t& inputdata);
+	void InputAddToBossListScale(inputdata_t& inputdata);
+	void InputAddToBossListPos(inputdata_t& inputdata);
+
+	void InputShootGrenadeByType(inputdata_t& inputdata);
+	void InputLaunchGrenadeForward(inputdata_t& inputdata);
 	void InputAlternativeSorting( inputdata_t &inputdata );
 	void InputAlpha( inputdata_t &inputdata );
 	void InputColor( inputdata_t &inputdata );
@@ -1404,8 +1413,12 @@ public:
 	void			SetLocalVelocity( const Vector &vecVelocity );
 	void			ApplyLocalVelocityImpulse( const Vector &vecImpulse );
 	void			SetAbsVelocity( const Vector &vecVelocity );
+	void			ApplyLocalVelocityImpulseUnsafe(const Vector& inVecImpulse);
 	void			ApplyAbsVelocityImpulse( const Vector &vecImpulse );
+	void			ApplyAbsVelocityImpulseUnsafe(const Vector& inVecImpulse);
 	void			ApplyLocalAngularVelocityImpulse( const AngularImpulse &angImpulse );
+	//DR generic grenade shoot method
+	
 
 	const Vector&	GetLocalVelocity( ) const;
 	const Vector&	GetAbsVelocity( ) const;

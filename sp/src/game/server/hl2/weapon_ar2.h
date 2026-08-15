@@ -43,7 +43,7 @@ public:
 
 	int		GetMinBurst( void ) { return 2; }
 	int		GetMaxBurst( void ) { return 5; }
-	float	GetFireRate( void ) { return 0.1f; }
+	float	GetFireRate(void);
 
 	bool	CanHolster( void );
 	bool	Reload( void );

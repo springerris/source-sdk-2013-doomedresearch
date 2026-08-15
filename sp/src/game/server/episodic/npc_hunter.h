@@ -22,4 +22,5 @@ void Hunter_StriderBusterAttached( CBaseEntity *pHunter, CBaseEntity *pAttached 
 void Hunter_StriderBusterDetached( CBaseEntity *pHunter, CBaseEntity *pAttached );
 void Hunter_StriderBusterLaunched( CBaseEntity *pBuster );
 
+
 #endif

@@ -30,6 +30,19 @@ ConVar cl_npc_speedmod_outtime( "cl_npc_speedmod_outtime", "1.5", FCVAR_CLIENTDL
 
 IMPLEMENT_CLIENTCLASS_DT(C_BaseHLPlayer, DT_HL2_Player, CHL2_Player)
 	RecvPropDataTable( RECVINFO_DT(m_HL2Local),0, &REFERENCE_RECV_TABLE(DT_HL2Local) ),
+	//RecvPropArray3(RECVINFO_ARRAY(m_bossDrawData), RecvPropDataTable(RECVINFO_DT(m_bossDrawData), 0, &REFERENCE_RECV_TABLE(DT_HL2_Player))),
+	//RecvPropArray(RecvPropInt(RECVINFO_ARRAY(m_bossDrawDataP)), m_bossDrawDataP),
+	//RecvPropArray(RecvPropString(RECVINFO_ARRAY(m_bossDrawDataTitle)), m_bossDrawDataTitle),
+	RecvPropInt(RECVINFO(m_iBossCount)),
+	RecvPropArray(RecvPropString(RECVINFO(m_bossDrawDataTitle[0])), m_bossDrawDataTitle),
+	RecvPropArray3(RECVINFO_ARRAY(m_bossDrawDataP), RecvPropFloat(RECVINFO(m_bossDrawDataP[0]))),
+	RecvPropArray3(RECVINFO_ARRAY(m_bossDrawDataScale), RecvPropFloat(RECVINFO(m_bossDrawDataScale[0]))),
+	RecvPropArray3(RECVINFO_ARRAY(m_bossDrawDataPos), RecvPropInt(RECVINFO(m_bossDrawDataPos[0]))),
+	RecvPropString(RECVINFO(m_bossDrawDataTitle1)),
+	RecvPropString(RECVINFO(m_bossDrawDataTitle2)),
+	RecvPropString(RECVINFO(m_bossDrawDataTitle3)),
+	RecvPropString(RECVINFO(m_bossDrawDataTitle4)),
+
 	RecvPropBool( RECVINFO( m_fIsSprinting ) ),
 #ifdef MAPBASE
 	RecvPropInt( RECVINFO( m_nProtagonistIndex ) ),
@@ -78,7 +91,7 @@ C_BaseHLPlayer::C_BaseHLPlayer()
 	m_flZoomRate		= 0.0f;
 	m_flZoomStartTime	= 0.0f;
 	m_flSpeedMod		= cl_forwardspeed.GetFloat();
-
+	CUtlVector<C_BossEncounterDrawData> m_bossList;
 #ifdef MAPBASE
 	ConVarRef scissor("r_flashlightscissor");
 	scissor.SetValue("0");
@@ -97,6 +110,13 @@ void C_BaseHLPlayer::OnDataChanged( DataUpdateType_t updateType )
 	if ( updateType == DATA_UPDATE_CREATED )
 	{
 		SetNextClientThink( CLIENT_THINK_ALWAYS );
+#ifdef DEBUG
+		for (int i = 0; i < MAX_BOSSES_DISPLAYED; i++) {
+			DevMsg(m_bossDrawDataTitle[i]);
+		}
+#endif // DEBUG
+
+		
 	}
 
 #ifdef SP_ANIM_STATE

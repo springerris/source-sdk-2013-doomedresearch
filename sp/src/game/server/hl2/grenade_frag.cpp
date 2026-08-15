@@ -6,6 +6,7 @@
 //=============================================================================//
 
 #include "cbase.h"
+#include "baseentity.h"
 #include "basegrenade_shared.h"
 #include "grenade_frag.h"
 #include "Sprite.h"
@@ -14,9 +15,12 @@
 #ifdef MAPBASE
 #include "mapbase/ai_grenade.h"
 #endif
+#include <engine/IEngineSound.h>
+
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+
 
 #define FRAG_GRENADE_BLIP_FREQUENCY			1.0f
 #define FRAG_GRENADE_BLIP_FAST_FREQUENCY	0.3f
@@ -59,6 +63,8 @@ public:
 	bool	IsCombineSpawned( void ) const { return m_combineSpawned; }
 	void	SetPunted( bool punt ) { m_punted = punt; }
 	bool	WasPunted( void ) const { return m_punted; }
+	void	StickTouch(CBaseEntity* pOther);
+
 
 	// this function only used in episodic.
 #if defined(HL2_EPISODIC) && 0 // FIXME: HandleInteraction() is no longer called now that base grenade derives from CBaseAnimating
@@ -75,6 +81,7 @@ protected:
 	bool	m_inSolid;
 	bool	m_combineSpawned;
 	bool	m_punted;
+	bool	m_stuck;
 };
 
 LINK_ENTITY_TO_CLASS( npc_grenade_frag, CGrenadeFrag );
@@ -91,6 +98,7 @@ BEGIN_DATADESC( CGrenadeFrag )
 	
 	// Function Pointers
 	DEFINE_THINKFUNC( DelayThink ),
+	DEFINE_ENTITYFUNC( StickTouch ),
 
 	// Inputs
 	DEFINE_INPUTFUNC( FIELD_FLOAT, "SetTimer", InputSetTimer ),
@@ -125,6 +133,7 @@ void CGrenadeFrag::Spawn( void )
 	m_takedamage	= DAMAGE_YES;
 	m_iHealth		= 1;
 
+	SetSolid(SOLID_BBOX);
 	SetSize( -Vector(4,4,4), Vector(4,4,4) );
 	SetCollisionGroup( COLLISION_GROUP_WEAPON );
 	CreateVPhysics();
@@ -159,6 +168,7 @@ void CGrenadeFrag::Spawn( void )
 
 	m_combineSpawned	= false;
 	m_punted			= false;
+	m_stuck = false;
 
 	BaseClass::Spawn();
 }
@@ -266,7 +276,7 @@ void CGrenadeFrag::VPhysicsUpdate( IPhysicsObject *pPhysics )
 #if 0
 	UTIL_TraceHull( start, start + vel * gpGlobals->frametime, CollisionProp()->OBBMins(), CollisionProp()->OBBMaxs(), CONTENTS_HITBOX|CONTENTS_MONSTER|CONTENTS_SOLID, &filter, &tr );
 #else
-	UTIL_TraceLine( start, start + vel * gpGlobals->frametime, CONTENTS_HITBOX|CONTENTS_MONSTER|CONTENTS_SOLID, &filter, &tr );
+	UTIL_TraceLine( start, start + vel * gpGlobals->frametime * 2, CONTENTS_HITBOX|CONTENTS_MONSTER|CONTENTS_SOLID, &filter, &tr );
 #endif
 	if ( tr.startsolid )
 	{
@@ -286,7 +296,7 @@ void CGrenadeFrag::VPhysicsUpdate( IPhysicsObject *pPhysics )
 		VectorNormalize(dir);
 		// send a tiny amount of damage so the character will react to getting bonked
 		CTakeDamageInfo info( this, GetThrower(), pPhysics->GetMass() * vel, GetAbsOrigin(), 0.1f, DMG_CRUSH );
-		tr.m_pEnt->TakeDamage( info );
+		if (!m_stuck) tr.m_pEnt->TakeDamage( info );
 
 		// reflect velocity around normal
 		vel = -2.0f * tr.plane.normal * DotProduct(vel,tr.plane.normal) + vel;
@@ -294,7 +304,20 @@ void CGrenadeFrag::VPhysicsUpdate( IPhysicsObject *pPhysics )
 		// absorb 80% in impact
 		vel *= GRENADE_COEFFICIENT_OF_RESTITUTION;
 		angVel *= -0.5f;
-		pPhysics->SetVelocity( &vel, &angVel );
+		if ((tr.m_pEnt->IsPlayer() || ((tr.m_pEnt->GetFlags() & FL_NPC || tr.m_pEnt->GetMoveType() == MOVETYPE_PUSH) && tr.m_pEnt->GetHealth() > 0)))
+		{
+			if (!m_stuck) {
+				EmitSound("TripmineGrenade.Place");
+				SetParent(tr.m_pEnt);
+				SetCollisionGroup(COLLISION_GROUP_DEBRIS);
+				m_stuck = true;
+			}
+
+		}
+		else {
+			pPhysics->SetVelocity(&vel, &angVel);
+		}
+		
 	}
 }
 
@@ -348,8 +371,30 @@ void CGrenadeFrag::OnPhysGunPickup( CBasePlayer *pPhysGunUser, PhysGunPickup_t r
 	BaseClass::OnPhysGunPickup( pPhysGunUser, reason );
 }
 
+void CGrenadeFrag::StickTouch(CBaseEntity* pOther)
+{
+	if (pOther->IsPlayer() || ((pOther->GetFlags()&FL_NPC || pOther->GetMoveType() == MOVETYPE_PUSH) && pOther->GetHealth()>0))
+	{
+		SetTouch(NULL);
+		EmitSound("TripmineGrenade.Place");
+		SetParent(pOther);
+		SetCollisionGroup(COLLISION_GROUP_DEBRIS);
+		
+	}
+}
+
 void CGrenadeFrag::DelayThink() 
 {
+	// DR: deattach if parent died.
+	if (CBaseEntity* ptr = this->GetMoveParent()) {
+		if (ptr->GetHealth()<=0) {
+			SetParent(NULL);
+			SetMoveType(MOVETYPE_VPHYSICS);
+			SetSolid(SOLID_VPHYSICS);
+		}
+	}
+
+
 	if( gpGlobals->curtime > m_flDetonateTime )
 	{
 		Detonate();
@@ -477,3 +522,4 @@ bool Fraggrenade_WasCreatedByCombine( const CBaseEntity *pEntity )
 
 	return false;
 }
+

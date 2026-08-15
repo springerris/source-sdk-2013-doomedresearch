@@ -21,6 +21,7 @@ ipch
 *.sln
 *.vcxproj.FileListAbsolute.txt
 *.pdb
+.vs/source-sdk-2013-doomedresearch/v17/Browse.VC.db
 
 # OSX/Linux build products
 *.mak
@@ -96,3 +97,4 @@ sp/src/vgui2/*.pdb
 
 # Build support files
 sp/src/devtools/gcc9+support.o
+/.vs

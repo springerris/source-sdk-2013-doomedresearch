@@ -16,4 +16,5 @@ CBaseGrenade *Fraggrenade_Create( const Vector &position, const QAngle &angles, 
 bool	Fraggrenade_WasPunted( const CBaseEntity *pEntity );
 bool	Fraggrenade_WasCreatedByCombine( const CBaseEntity *pEntity );
 
+
 #endif // GRENADE_FRAG_H

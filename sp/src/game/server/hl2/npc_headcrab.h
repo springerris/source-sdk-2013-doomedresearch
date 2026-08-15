@@ -21,6 +21,7 @@ abstract_class CBaseHeadcrab : public CAI_BaseNPC
 	DECLARE_CLASS( CBaseHeadcrab, CAI_BaseNPC );
 
 public:
+	friend class CStatusEffect;
 	void Spawn( void );
 	void Precache( void );
 	void RunTask( const Task_t *pTask );

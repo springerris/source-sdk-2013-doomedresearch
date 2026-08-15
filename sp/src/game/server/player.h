@@ -260,7 +260,8 @@ public:
 
 	virtual void			SetModel( const char *szModelName );
 	void					SetBodyPitch( float flPitch );
-
+	void					rootCharacter() override;
+	void					unrootCharacter() override;
 	virtual void			UpdateOnRemove( void );
 
 	static CBasePlayer		*CreatePlayer( const char *className, edict_t *ed );

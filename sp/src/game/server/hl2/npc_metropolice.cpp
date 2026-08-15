@@ -687,6 +687,7 @@ bool CNPC_MetroPolice::CreateComponents()
 void CNPC_MetroPolice::Spawn( void )
 {
 	Precache();
+	
 
 #ifdef _XBOX
 	// Always fade the corpse
@@ -807,6 +808,7 @@ void CNPC_MetroPolice::Spawn( void )
 	{
 		SetBodygroup( METROPOLICE_BODYGROUP_MANHACK, true );
 	}
+	SetStatusThink();
 }
 
 

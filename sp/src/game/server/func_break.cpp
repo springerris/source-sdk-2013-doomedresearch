@@ -1324,7 +1324,8 @@ void CPushable::VPhysicsCollision( int index, gamevcollisionevent_t *pEvent )
 		CBaseEntity::VPhysicsCollision( index, pEvent );
 		return;
 	}
-
+	
 	BaseClass::VPhysicsCollision( index, pEvent );
 }
+
 

@@ -1820,6 +1820,7 @@ void CNPC_BaseZombie::Spawn( void )
 	GetEnemies()->SetFreeKnowledgeDuration( 6.0 );
 
 	m_ActBusyBehavior.SetUseRenderBounds(true);
+	SetStatusThink();
 }
 
 

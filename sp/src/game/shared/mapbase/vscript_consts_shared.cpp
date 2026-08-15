@@ -629,6 +629,9 @@ void RegisterSharedScriptConstants()
 	ScriptRegisterConstant( g_pScriptVM, DAMAGE_EVENTS_ONLY, "Call damage functions, but don't modify health (Use with GetTakeDamage/SetTakeDamage)" );
 	ScriptRegisterConstant( g_pScriptVM, DAMAGE_YES, "Allow damage to be taken (Use with GetTakeDamage/SetTakeDamage)" );
 	ScriptRegisterConstant( g_pScriptVM, DAMAGE_AIM, "(Use with GetTakeDamage/SetTakeDamage)" );
+	// DR: length of high velocity vector for certain interactions
+
+	ScriptRegisterConstant( g_pScriptVM, HIGH_VEL, "DR: length of high velocity vector for certain interactions");
 
 #ifdef GAME_DLL
 	ScriptRegisterConstant( g_pScriptVM, GLOBAL_OFF, "Global state used by the Globals singleton." );

@@ -13,6 +13,9 @@
 
 #include "baseprojectile.h"
 
+
+
+
 #if defined( CLIENT_DLL )
 
 #define CBaseGrenade C_BaseGrenade
@@ -27,6 +30,8 @@
 #endif
 
 #define BASEGRENADE_EXPLOSION_VOLUME	1024
+
+
 
 class CTakeDamageInfo;
 
@@ -75,6 +80,8 @@ public:
 
 	virtual float		GetShakeAmplitude( void ) { return 25.0; }
 	virtual float		GetShakeRadius( void ) { return 750.0; }
+
+
 
 	// Damage accessors.
 	virtual float GetDamage()
@@ -161,5 +168,9 @@ private:
 	CBaseGrenade( const CBaseGrenade & ); // not defined, not accessible
 
 };
+
+
+
+
 
 #endif // BASEGRENADE_SHARED_H
