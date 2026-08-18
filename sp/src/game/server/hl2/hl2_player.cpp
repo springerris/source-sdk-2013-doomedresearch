@@ -1045,10 +1045,10 @@ void CHL2_Player::PreThink(void)
 		m_vecMaxVer = curVel;
 		
 	} else if (abs(curVel.z) == abs(m_vecMaxVer.z)) { resetMaxV = true; }
-
+	
 	if (curVel.Length() >= m_vecMaxOverall.Length()) {
 		m_vecMaxOverall = curVel;
-		
+
 	}
 	else if (curVel.Length() == m_vecMaxOverall.Length()) { resetMaxO = true; }
 	
@@ -1063,7 +1063,7 @@ void CHL2_Player::PreThink(void)
 		m_vecMaxHor = newMax;
 	}
 
-	if (resetMaxH) {
+	if (resetMaxV) {
 		Vector newMax = curVel;
 		for (int i = 0; i < VELBUFFER_LENGTH - 1; i++) {
 			if (m_velBuffer[i].Length2D() > curVel.Length2D()) { newMax = m_velBuffer[i]; }
