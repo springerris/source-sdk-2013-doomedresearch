@@ -408,12 +408,12 @@ void CWeaponFrag::ThrowGrenade( CBasePlayer *pPlayer )
 	Vector vecSrc = vecEye + vForward * 18.0f + vRight * 8.0f;
 	CheckThrowPosition( pPlayer, vecEye, vecSrc );
 //	vForward[0] += 0.1f;
-	vForward[2] += 0.1f;
+	vForward[2] += 0.05f;
 
 	Vector vecThrow;
 	pPlayer->GetVelocity( &vecThrow, NULL );
-	vecThrow += vForward * 1200;
-	Fraggrenade_Create( vecSrc, vec3_angle, vecThrow, AngularImpulse(600,random->RandomInt(-1200,1200),0), pPlayer, GRENADE_TIMER, false );
+	vecThrow += vForward * 2800;
+	Fraggrenade_Create( vecSrc, vec3_angle, vecThrow, AngularImpulse(10,random->RandomInt(-120,120),0), pPlayer, GRENADE_TIMER, false );
 
 	m_bRedraw = true;
 

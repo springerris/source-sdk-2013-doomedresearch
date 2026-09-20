@@ -281,7 +281,7 @@ void CProjectilePropShooter::ShootProjectile()
 
 void CProjectileProp::SetupSprites()
 {
-	// Start up the eye glow
+	// Start up the ball glow
 
 	m_handleSprite = CSprite::SpriteCreate(STRING(m_iszSpriteName), this->GetLocalOrigin(), false);
 	m_handleTrail = CSpriteTrail::SpriteTrailCreate(STRING(m_iszSpriteName), this->GetLocalOrigin(), false);

@@ -27,6 +27,7 @@
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+#include <particle_parse.h>
 
 ConVar	sk_combine_s_health( "sk_combine_s_health","0");
 ConVar	sk_combine_s_kick( "sk_combine_s_kick","0");
@@ -125,6 +126,7 @@ void CNPC_CombineS::Precache()
 	UTIL_PrecacheOther( "item_healthvial" );
 	UTIL_PrecacheOther( "weapon_frag" );
 	UTIL_PrecacheOther( "item_ammo_ar2_altfire" );
+	
 
 	BaseClass::Precache();
 }
@@ -391,6 +393,11 @@ void CNPC_CombineS::Event_Killed( const CTakeDamageInfo &info )
 		}
 	}
 
+	if (m_fIsGrunt) {
+		DispatchParticleEffect(BREAKPARTICLE, this->GetAbsOrigin() + Vector(0,0,16), QAngle(0,0,0));
+		EmitSound(BREAKSOUND);
+	}
+
 	BaseClass::Event_Killed( info );
 }
 
@@ -401,6 +408,10 @@ void CNPC_CombineS::Event_Killed( const CTakeDamageInfo &info )
 //-----------------------------------------------------------------------------
 bool CNPC_CombineS::IsLightDamage( const CTakeDamageInfo &info )
 {
+	if (m_fIsGrunt) {
+		ClearCondition(COND_LIGHT_DAMAGE);
+
+	}
 	return BaseClass::IsLightDamage( info );
 }
 

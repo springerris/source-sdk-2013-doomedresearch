@@ -30,11 +30,23 @@
 //#define CAI_Sentence CAI_SentenceTalker
 #define COMBINE_SOLDIER_USES_RESPONSE_SYSTEM 1
 #endif
+#include <physics_cannister.h>
 
 // Used when only what combine to react to what the spotlight sees
 #define SF_COMBINE_NO_LOOK	(1 << 16)
 #define SF_COMBINE_NO_GRENADEDROP ( 1 << 17 )
 #define SF_COMBINE_NO_AR2DROP ( 1 << 18 )
+#define GRUNTMODEL "models/combine_grunt.mdl"
+#define BREAKSOUND "MetalVehicle.ImpactHard"
+#define BREAKPARTICLE "striderbuster_explode_smoke"
+
+#define PUNTSOUND "Canister.ImpactHard"
+#define TINGSOUND "Armor.BulletImpact"
+#define GRUNT_EXPLOSION_MUL 0.5f
+#define GRUNT_BULLET_MUL 0.35f
+#define GRUNT_BULLET_CHANCE 0.75f
+#define GRUNT_PUNT_MUL 900
+#define JETMODEL "models/props_c17/canister_propane01a.mdl"
 
 //=========================================================
 //	>> CNPC_Combine
@@ -67,7 +79,10 @@ public:
 	virtual bool	CanAltFireEnemy( bool bUseFreeKnowledge );
 	int				GetGrenadeConditions( float flDot, float flDist );
 	int				RangeAttack2Conditions( float flDot, float flDist ); // For innate grenade attack
-	int				MeleeAttack1Conditions( float flDot, float flDist ); // For kick/punch
+	int				MeleeAttack1Conditions( float flDot, float flDist );
+	void TraceAttack(const CTakeDamageInfo& inputInfo, const Vector& vecDir, trace_t* ptr, CDmgAccumulator* pAccumulator);
+	// For kick/punch
+	int				OnTakeDamage_Alive(const CTakeDamageInfo& info);
 	bool			FVisible( CBaseEntity *pEntity, int traceMask = MASK_BLOCKLOS, CBaseEntity **ppBlocker = NULL );
 	bool			FVisible( const Vector &vecTarget, int traceMask = MASK_BLOCKLOS, CBaseEntity **ppBlocker = NULL ) { return BaseClass::FVisible( vecTarget, traceMask, ppBlocker ); }
 	virtual bool	IsCurTaskContinuousMove();
@@ -333,6 +348,8 @@ private:
 	// Underthrow grenade at target
 	bool			m_bUnderthrow;
 	bool			m_bAlternateCapable;
+	bool			m_bJetpackUser; // DR: do I use the jetpack?
+	CHandle<CPhysicsCannister>	m_pMyJetPack;
 #endif
 	bool			m_bShouldPatrol;
 	bool			m_bFirstEncounter;// only put on the handsign show in the squad's first encounter.
@@ -375,6 +392,8 @@ public:
 	int				m_iLastAnimEventHandled;
 #endif
 	bool			m_fIsElite;
+	bool			m_fIsNova;
+	bool			m_fIsGrunt;
 #ifndef MAPBASE // CAI_GrenadeUser
 	Vector			m_vecAltFireTarget;
 #endif

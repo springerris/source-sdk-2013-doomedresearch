@@ -46,6 +46,7 @@ public:
 	int GetMineState() { return m_iMineState; }
 	bool IsValidLocation();
 	void Flip( const Vector &vecForce, const AngularImpulse &torque );
+	void CheckOwner(CBaseEntity* pOwner);
 	void SearchThink();
 	void BounceThink();
 	void SettleThink();

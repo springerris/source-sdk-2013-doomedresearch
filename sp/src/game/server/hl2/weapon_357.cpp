@@ -376,7 +376,7 @@ void CWeapon357::PrimaryAttack( void )
 	Vector vecSrc		= pPlayer->Weapon_ShootPosition();
 	Vector vecAiming	= pPlayer->GetAutoaimVector( AUTOAIM_SCALE_DEFAULT );	
 
-	pPlayer->FireBullets( 1, vecSrc, vecAiming, vec3_origin, MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 0 );
+	pPlayer->FireBullets( 1, vecSrc, vecAiming, VECTOR_CONE_1DEGREES * 0.05, MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 0 );
 
 	pPlayer->SetMuzzleFlashTime( gpGlobals->curtime + 0.5 );
 
@@ -441,7 +441,7 @@ void CWeapon357::SecondaryAttack(void)
 
 	Vector vecSrc = pPlayer->Weapon_ShootPosition();
 	Vector vecAiming = pPlayer->GetAutoaimVector(AUTOAIM_SCALE_DEFAULT);
-	pPlayer->FireBullets(1, vecSrc, vecAiming, VECTOR_CONE_5DEGREES, MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 0);
+	pPlayer->FireBullets(1, vecSrc, vecAiming, VECTOR_CONE_1DEGREES, MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 0);
 
 	pPlayer->SetMuzzleFlashTime(gpGlobals->curtime + 0.5);
 

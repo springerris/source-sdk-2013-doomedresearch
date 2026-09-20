@@ -4093,7 +4093,7 @@ bool CNPC_Antlion::ShouldGib( const CTakeDamageInfo &info )
 bool CNPC_Antlion::CorpseGib( const CTakeDamageInfo &info )
 {
 #ifdef HL2_EPISODIC
-
+	if (CheckHavingStatusEffect(ST_HOLOGRAM)) return false;
 	if ( IsWorker() )
 	{
 		DoPoisonBurst();

@@ -11,6 +11,14 @@
 #endif
 
 #include "player_pickup.h"
+#define JETPARTICLE "fire_jet_01_flame"
+enum JETPACK_STATES {
+	JETPACK_NOT,
+	JETPACK_OFF,
+	JETPACK_STARTING,
+	JETPACK_FLIGHT,
+	JETPACK_UNCONTROLLABLE
+};
 
 class CSteamJet;
 
@@ -52,6 +60,7 @@ public:
 	bool CreateVPhysics();
 
 	DECLARE_DATADESC();
+	
 	virtual void VPhysicsUpdate( IPhysicsObject *pPhysics );
 
 	virtual QAngle PreferredCarryAngles( void ) { return QAngle( -90, 0, 0 ); }
@@ -82,6 +91,8 @@ public:
 		}
 	}
 
+	void JetThink( void );
+	void SetJetState(JETPACK_STATES state);
 	void CannisterActivate( CBaseEntity *pActivator, const Vector &thrustOffset );
 	void CannisterFire( CBaseEntity *pActivator );
 	void Deactivate( void );
@@ -117,6 +128,7 @@ protected:
 
 
 public:
+	JETPACK_STATES		m_iJetpackState;
 	Vector				m_thrustOrigin;
 	CThrustController	m_thruster;
 	IPhysicsMotionController *m_pController;
@@ -136,6 +148,7 @@ public:
 
 	CHandle<CBasePlayer>	m_hPhysicsAttacker;
 	float					m_flLastPhysicsInfluenceTime;
+	float					m_flNextJetpackEvent;
 	EHANDLE					m_hLauncher;	// Entity that caused this cannister to launch
 
 private:

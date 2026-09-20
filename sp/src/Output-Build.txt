@@ -1,0 +1,7 @@
+﻿-------- Edit and Continue build started --------
+
+npc_basescanner.cpp
+--------------------- Done ----------------------
+
+Edit and Continue : Successfully applied code changes.
+

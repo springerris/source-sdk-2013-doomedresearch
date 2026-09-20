@@ -5,6 +5,7 @@
 //===========================================================================//
 
 #include "cbase.h"
+#include "Sprites.h"
 #include "ai_network.h"
 #include "ai_default.h"
 #include "ai_schedule.h"
@@ -38,6 +39,7 @@
 #include "ai_memory.h"
 #include "npc_attackchopper.h"
 
+
 #ifdef HL2_EPISODIC
 #include "physics_bone_follower.h"
 #endif // HL2_EPISODIC
@@ -49,6 +51,7 @@
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+
 
 // -------------------------------------
 // Bone controllers
@@ -122,6 +125,7 @@ static const char *s_pChunkModelName[CHOPPER_MAX_CHUNKS] =
 #define SF_HELICOPTER_LONG_SHADOW			0x00200000
 #ifdef MAPBASE
 #define SF_HELICOPTER_AIM_WITH_GUN_OFF		0x00400000
+#define SF_HELICOPTER_USE_PROJECTILE_BULLETS 0x00800000
 #endif
 
 #define CHOPPER_SLOW_BOMB_SPEED	250
@@ -638,6 +642,8 @@ private:
 
 	// Make sure we don't hit too many times
 	void FireBullets( const FireBulletsInfo_t &info );
+
+	void FireSprite(const FireBulletsInfo_t& info);
 
 	// Is it "fair" to drop this bomb?
 	bool IsBombDropFair( const Vector &vecBombStartPos, const Vector &vecVelocity );
@@ -2128,7 +2134,10 @@ void CNPC_AttackHelicopter::FireBullets( const FireBulletsInfo_t &info )
 	bool bIsPlayer = GetEnemy() && GetEnemy()->IsPlayer();
 	if ( !bIsPlayer )
 	{
-		BaseClass::FireBullets( info );
+		if (HasSpawnFlags(SF_HELICOPTER_USE_PROJECTILE_BULLETS)) {
+			FireSprite(info);
+		}
+		else BaseClass::FireBullets( info );
 		return;
 	}
 
@@ -2138,7 +2147,11 @@ void CNPC_AttackHelicopter::FireBullets( const FireBulletsInfo_t &info )
 		{
 			FireBulletsInfo_t actualInfo = info;
 			actualInfo.m_pAdditionalIgnoreEnt = GetEnemy();
-			BaseClass::FireBullets( actualInfo );
+			if (HasSpawnFlags(SF_HELICOPTER_USE_PROJECTILE_BULLETS)) {
+				FireSprite(info);
+
+			}
+			else BaseClass::FireBullets( actualInfo );
 			return;
 		}
 	}
@@ -2148,12 +2161,35 @@ void CNPC_AttackHelicopter::FireBullets( const FireBulletsInfo_t &info )
 	int nPrevHealth = pPlayer->GetHealth();
 	int nPrevArmor = pPlayer->ArmorValue();
 
-	BaseClass::FireBullets( info );
+	if (HasSpawnFlags(SF_HELICOPTER_USE_PROJECTILE_BULLETS)) {
+		FireSprite(info);
+
+	}
+	else BaseClass::FireBullets( info );
 
 	if (( pPlayer->GetHealth() < nPrevHealth ) || ( pPlayer->ArmorValue() < nPrevArmor ))
 	{
 		++m_nBurstHits;
 	}
+}
+
+void CNPC_AttackHelicopter::FireSprite(const FireBulletsInfo_t& info)
+{
+	float diverge = RandomFloat(0.7, 1.3);
+	CBulletSprite* bSpr = CBulletSprite::SpriteTrailCreate("sprites/bluelaser1.vmt", info.m_vecSrc, true);
+	QAngle ang;
+	VectorAngles(info.m_vecDirShooting, ang);
+	bSpr->SetAbsAngles(ang);
+	bSpr->SetTransparency(kRenderTransAdd, 50, 255, diverge * 100, 200, kRenderFxNone);
+	//ballSprite->SetTransparency(kRenderWorldGlow, 9, 12, 140, 255, kRenderFxNone);
+	//bSpr->SetScale(0.25);
+	bSpr->SetLifeTime(0.2);
+	bSpr->SetStartWidth(16);
+	bSpr->SetEndWidth(2);
+	bSpr->SetAbsVelocity(2500 * diverge * info.m_vecDirShooting);
+	//bSpr->DieIn(25);
+	bSpr->SetOwnerEntity(this);
+	UTIL_SetSize(bSpr, -Vector(1, 1, 1), Vector(1, 1, 1));
 }
 
 

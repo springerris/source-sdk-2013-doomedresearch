@@ -82,6 +82,7 @@ CNPC_BaseScanner::CNPC_BaseScanner()
 #endif
 	m_pEngineSound = NULL;
 	m_bHasSpoken = false;
+	m_fGibbed = false;
 
 	m_flAttackNearDist = SCANNER_ATTACK_NEAR_DIST;
 	m_flAttackFarDist = SCANNER_ATTACK_FAR_DIST;
@@ -359,6 +360,9 @@ void CNPC_BaseScanner::StartTask( const Task_t *pTask )
 			{
 				// Fly towards my enemy
 				Vector vEnemyPos = GetEnemyLKP();
+				if (GetOwnerEntity() && GetOwnerEntity()->IsPlayer()) {
+
+				} else
 				m_vecDiveBombDirection = vEnemyPos - GetLocalOrigin();
 			}
 			else
@@ -366,6 +370,10 @@ void CNPC_BaseScanner::StartTask( const Task_t *pTask )
 				// Pick a random forward and down direction.
 				Vector forward;
 				GetVectors( &forward, NULL, NULL );
+				if (GetOwnerEntity() && GetOwnerEntity()->IsPlayer()) {
+
+				}
+				else
 				m_vecDiveBombDirection = forward + Vector( random->RandomFloat( -10, 10 ), random->RandomFloat( -10, 10 ), random->RandomFloat( -20, -10 ) );
 			}
 			VectorNormalize( m_vecDiveBombDirection );
@@ -549,6 +557,11 @@ void CNPC_BaseScanner::VPhysicsCollision( int index, gamevcollisionevent_t *pEve
 //------------------------------------------------------------------------------
 void CNPC_BaseScanner::Gib( void )
 {
+	//
+	if (m_fGibbed) {
+		return;
+	}
+	m_fGibbed = true;
 	if ( IsMarkedForDeletion() )
 		return;
 
@@ -565,9 +578,9 @@ void CNPC_BaseScanner::Gib( void )
 	// Light
 	CBroadcastRecipientFilter filter;
 	te->DynamicLight( filter, 0.0, &WorldSpaceCenter(), 255, 180, 100, 0, 100, 0.1, 0 );
-
+	const EHANDLE self(this);
 	// Cover the gib spawn
-	ExplosionCreate( WorldSpaceCenter(), GetAbsAngles(), this, 64, 64, false );
+	ExplosionCreate(WorldSpaceCenter(), GetAbsAngles(), this, 32, 64, true, &self, CLASS_NONE, 32);
 
 	// Turn off any smoke trail
 	if ( m_pSmokeTrail )
@@ -580,12 +593,14 @@ void CNPC_BaseScanner::Gib( void )
 	// FIXME: This is because we couldn't save/load the CTakeDamageInfo.
 	// because it's midnight before the teamwide playtest. Real solution
 	// is to add a datadesc to CTakeDamageInfo
+	
 	if ( m_KilledInfo.GetInflictor() )
 	{
 		BaseClass::Event_Killed( m_KilledInfo );
 	}
-
+	
 	UTIL_Remove(this);
+	
 }
 
 //-----------------------------------------------------------------------------
@@ -606,6 +621,20 @@ void CNPC_BaseScanner::OnPhysGunPickup( CBasePlayer *pPhysGunUser, PhysGunPickup
 
 		m_flEngineStallTime = gpGlobals->curtime + 2.0f;
 		ScannerEmitSound( "DiveBomb" );
+		if (m_nFlyMode == SCANNER_FLY_DIVE) {
+			SetOwnerEntity(pPhysGunUser);
+			Vector eyeForward;
+			pPhysGunUser->EyeVectors(&eyeForward, NULL, NULL);
+			AngularImpulse ang(0, 0, 0);
+			VPhysicsGetObject()->EnableMotion(false);
+			
+			QAngle angle;
+			VectorAngles(eyeForward, angle);
+			SetAbsAngles(angle);
+			m_vecDiveBombDirection = eyeForward;
+			eyeForward = eyeForward * 2000;
+			//VPhysicsGetObject()->SetVelocity(&eyeForward, &ang);
+		}
 	}
 	else
 	{
@@ -728,13 +757,15 @@ void CNPC_BaseScanner::AttackDivebombCollide(float flInterval)
 		pHitEntity = tr.m_pEnt;
 
 		// Did I hit an entity that isn't another scanner?
-		if (pHitEntity && pHitEntity->Classify()!=CLASS_SCANNER)
+		// DR: I don't give a SHIT about scanners
+		if (pHitEntity)
 		{
 			if ( !pHitEntity->ClassMatches("item_battery") )
 			{
 				if ( !pHitEntity->IsWorld() )
 				{
 					CTakeDamageInfo info( this, this, sk_scanner_dmg_dive.GetFloat(), DMG_CLUB );
+					info.SetForceFriendlyFire(true);
 					CalculateMeleeDamageForce( &info, (tr.endpos - tr.startpos), tr.endpos );
 					pHitEntity->TakeDamage( info );
 				}
@@ -1349,25 +1380,38 @@ void CNPC_BaseScanner::MoveToDivebomb(float flInterval)
 {
 	float myAccel = 1600;
 	float myDecay = 0.05f; // decay current velocity to 10% in 1 second
-
+	bool isOwnedByPlayer = GetOwnerEntity() && GetOwnerEntity()->IsPlayer();
 	// Fly towards my enemy
-	Vector vEnemyPos = GetEnemyLKP();
-	Vector vFlyDirection  = vEnemyPos - GetLocalOrigin();
-	VectorNormalize( vFlyDirection );
+
+	if (!isOwnedByPlayer) {
+		Vector vEnemyPos = GetEnemyLKP();
+		Vector vFlyDirection = vEnemyPos - GetLocalOrigin();
+		VectorNormalize(vFlyDirection);
+	}
 
 	// Set net velocity 
+	
+	if (isOwnedByPlayer) {
+		myAccel = 20000;
+		VPhysicsGetObject()->EnableMotion(true);
+		VPhysicsGetObject()->ApplyForceCenter(m_vecDiveBombDirection * myAccel);
+	} else
 	MoveInDirection( flInterval, m_vecDiveBombDirection, myAccel, myAccel, myDecay);
 
 	// Spin out of control.
-	Vector forward;
-	VPhysicsGetObject()->LocalToWorldVector( &forward, Vector( 1.0, 0.0, 0.0 ) );
-	AngularImpulse torque = forward * m_flDiveBombRollForce;
-	VPhysicsGetObject()->ApplyTorqueCenter( torque );
+	if (!isOwnedByPlayer) {
+		Vector forward;
+		VPhysicsGetObject()->LocalToWorldVector(&forward, Vector(1.0, 0.0, 0.0));
+		AngularImpulse torque = forward * m_flDiveBombRollForce;
+		VPhysicsGetObject()->ApplyTorqueCenter(torque);
+	}
 
 	// BUGBUG: why Y axis and not Z?
-	Vector up;
-	VPhysicsGetObject()->LocalToWorldVector( &up, Vector( 0.0, 1.0, 0.0 ) );
-	VPhysicsGetObject()->ApplyForceCenter( up * 2000 );
+	if (!isOwnedByPlayer) {
+		Vector up;
+		VPhysicsGetObject()->LocalToWorldVector(&up, Vector(0.0, 1.0, 0.0));
+		VPhysicsGetObject()->ApplyForceCenter(up * 2000);
+	}
 }
 
 //-----------------------------------------------------------------------------

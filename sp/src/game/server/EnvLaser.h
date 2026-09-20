@@ -37,6 +37,7 @@ public:
 	void InputTurnOn( inputdata_t &inputdata );
 	void InputTurnOff( inputdata_t &inputdata );
 	void InputToggle( inputdata_t &inputdata );
+	static CEnvLaser* LaserCreate(const char* pSpriteName, const Vector& origin, float flLength, float flRealWidth, float m_flFadeAt = 0.0, bool m_fIsFading = false);
 #ifdef MAPBASE
 	void InputSetTarget( inputdata_t &inputdata ) { m_iszLaserTarget = inputdata.value.StringID(); }
 #endif
@@ -50,6 +51,8 @@ public:
 	Vector m_vecLaserOrigin;
 	float	m_flLength;
 	float	m_flRealWidth;
+	float	m_flFadeAt;
+	bool	m_fIsFading;
 
 #ifdef MAPBASE
 	COutputEvent	m_OnTouchedByEntity;

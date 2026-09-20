@@ -6,6 +6,7 @@
 
 #include "cbase.h"
 #include "soundenvelope.h"
+#include "eventqueue.h"
 #include "Sprite.h"
 #include "entitylist.h"
 #include "ai_basenpc.h"
@@ -33,6 +34,7 @@ enum
 {
 	MINE_MODIFICATION_NORMAL  = 0,
 	MINE_MODIFICATION_CAVERN,
+	MINE_MODIFICATION_HUNTER
 };
 
 // the citizen modified skins for the mine (inclusive):
@@ -473,6 +475,16 @@ void CBounceBomb::Flip( const Vector &vecForce, const AngularImpulse &torque )
 	VPhysicsGetObject()->ApplyForceCenter( vecForce );
 	VPhysicsGetObject()->ApplyTorqueCenter( torque );
 	m_iFlipAttempts++;
+}
+
+void CBounceBomb::CheckOwner(CBaseEntity* ent)
+{
+	if (GetOwnerEntity()) {
+		if (FClassnameIs(GetOwnerEntity(), "npc_hunter")) {
+			g_EventQueue.AddEvent(GetOwnerEntity(), "DecrementMine", 0.0, this, this);
+			SetOwnerEntity(ent);
+		}
+	}
 }
 
 //---------------------------------------------------------
@@ -1177,6 +1189,7 @@ void CBounceBomb::SearchThink()
 #ifdef MAPBASE
 		// We don't already store our holder for some reason
 		m_OnPulledUp.FireOutput( UTIL_GetLocalPlayer(), this );
+		CheckOwner(UTIL_GetLocalPlayer());
 #else
 		m_OnPulledUp.FireOutput( this, this );
 #endif
@@ -1207,6 +1220,7 @@ void CBounceBomb::SearchThink()
 	{
 #ifdef MAPBASE
 		m_OnTriggered.FireOutput( m_hNearestNPC, this );
+		CheckOwner(m_hNearestNPC);
 #endif
 		if( m_bBounce )
 		{
@@ -1265,6 +1279,7 @@ void CBounceBomb::ExplodeTouch( CBaseEntity *pOther )
 //---------------------------------------------------------
 void CBounceBomb::ExplodeThink()
 {
+	
 	SetSolid( SOLID_NONE );
 
 	// Don't catch self in own explosion!
@@ -1297,7 +1312,7 @@ void CBounceBomb::ExplodeThink()
 #ifdef MAPBASE
 	m_OnExplode.FireOutput( m_hNearestNPC, this );
 #endif
-
+	CheckOwner(NULL);
 	UTIL_Remove( this );
 }
 
@@ -1607,7 +1622,16 @@ void CBounceBomb::OnPhysGunPickup( CBasePlayer *pPhysGunUser, PhysGunPickup_t re
 	{
 		if( m_iMineState == MINE_STATE_TRIGGERED || m_iMineState == MINE_STATE_ARMED )
 		{
-			// Already set to blow
+			SetGravity(0.0);
+			if (VPhysicsGetObject()) {
+				VPhysicsGetObject()->EnableGravity(false);
+				VPhysicsGetObject()->EnableDrag(false);
+				Vector eyeForward;
+				pPhysGunUser->EyeVectors(&eyeForward, NULL, NULL);
+				eyeForward = eyeForward * 17000;
+				AngularImpulse angular(0, 0, 0);
+				VPhysicsGetObject()->SetVelocityInstantaneous(&eyeForward, &angular);
+			}
 			return;
 		}
 

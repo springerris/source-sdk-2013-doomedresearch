@@ -43,7 +43,9 @@ class CUserCmd;
 // How many times to display altfire hud hints (per weapon)
 #define WEAPON_ALTFIRE_HUD_HINT_COUNT	1
 #define WEAPON_RELOAD_HUD_HINT_COUNT	1
-
+#define MINIGUN_SHOTS_TO_REACH 25.0f
+#define MINIGUN_MIN_INTERVAL 0.025f
+#define MINIGUN_MAX_INTERVAL 1.0f
 //Start with a constraint in place (don't drop to floor)
 #define	SF_WEAPON_START_CONSTRAINED	(1<<0)	
 #define SF_WEAPON_NO_PLAYER_PICKUP	(1<<1)

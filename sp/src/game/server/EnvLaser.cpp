@@ -22,6 +22,8 @@ BEGIN_DATADESC( CEnvLaser )
 	DEFINE_KEYFIELD( m_iszSpriteName, FIELD_STRING, "EndSprite" ),
 	DEFINE_KEYFIELD(m_vecLaserOrigin, FIELD_VECTOR,"LaserTargetCoords"),
 	DEFINE_FIELD( m_firePosition, FIELD_VECTOR ),
+	DEFINE_FIELD(m_flFadeAt, FIELD_TIME),
+	DEFINE_FIELD(m_fIsFading, FIELD_BOOLEAN),
 	DEFINE_KEYFIELD( m_flStartFrame, FIELD_FLOAT, "framestart" ),
 	DEFINE_KEYFIELD(m_flRealWidth, FIELD_FLOAT, "realwidth"),
 	
@@ -47,6 +49,8 @@ END_DATADESC()
 //-----------------------------------------------------------------------------
 void CEnvLaser::Spawn( void )
 {
+	m_fIsFading = false;
+	m_flFadeAt = 0.0;
 	if ( !GetModelName() )
 	{
 		SetThink( &CEnvLaser::SUB_Remove );
@@ -177,6 +181,12 @@ void CEnvLaser::InputToggle( inputdata_t &inputdata )
 	{
 		TurnOn();
 	}
+}
+
+CEnvLaser* CEnvLaser::LaserCreate(const char* pSpriteName, const Vector& origin, float flLength, float flRealWidth, float m_flFadeAt, bool m_fIsFading)
+{
+	// TODO: everything
+	return NULL;
 }
 
 

@@ -35,6 +35,11 @@ STUB_WEAPON_CLASS( weapon_357, Weapon357, C_BaseHLCombatWeapon );
 STUB_WEAPON_CLASS( weapon_crossbow, WeaponCrossbow, C_BaseHLCombatWeapon );
 STUB_WEAPON_CLASS(weapon_pressurecannon, WeaponPressureCannon, C_BaseHLCombatWeapon);
 STUB_WEAPON_CLASS(weapon_exblaster, WeaponExBlaster, C_BaseHLCombatWeapon);
+STUB_WEAPON_CLASS(weapon_plasmagun, WeaponPlasmagun, C_BaseHLCombatWeapon);
+STUB_WEAPON_CLASS(weapon_plasmaspewer, WeaponPlasmaspewer, C_BaseHLCombatWeapon);
+STUB_WEAPON_CLASS(weapon_minigun, WeaponMinigun, C_BaseHLCombatWeapon);
+STUB_WEAPON_CLASS(weapon_aa12, WeaponAA12, C_BaseHLCombatWeapon);
+STUB_WEAPON_CLASS(weapon_m249, WeaponM249, C_BaseHLCombatWeapon);
 #ifndef MAPBASE
 STUB_WEAPON_CLASS( weapon_slam, Weapon_SLAM, C_BaseHLCombatWeapon );
 #endif

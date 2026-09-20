@@ -2286,7 +2286,7 @@ void CWeaponPhysCannon::PrimaryAttack( void )
 	VectorMA( start, flPuntDistance, forward, end );
 
 	trace_t tr;
-	UTIL_PhyscannonTraceHull( start, end, -Vector(8,8,8), Vector(8,8,8), pOwner, &tr );
+	UTIL_PhyscannonTraceHull( start, end, -Vector(8,8,8) * 3, Vector(8,8,8) * 3, pOwner, &tr );
 	bool bValid = true;
 	CBaseEntity *pEntity = tr.m_pEnt;
 	if ( tr.fraction == 1 || !tr.m_pEnt || tr.m_pEnt->IsEFlagSet( EFL_NO_PHYSCANNON_INTERACTION ) )
@@ -2623,7 +2623,7 @@ void CWeaponPhysCannon::FindObjectTrace( CBasePlayer *pPlayer, trace_t *pTraceRe
 
 	// Setup our positions
 	Vector	start = pPlayer->Weapon_ShootPosition();
-	float	testLength = TraceLength() * 4.0f;
+	float	testLength = TraceLength() * 4.0f * 1.0f; // DR: added 16 for reasons
 	Vector	end = start + forward * testLength;
 
 	if( IsMegaPhysCannon() && hl2_episodic.GetBool() )

@@ -182,6 +182,8 @@ ConVar hunter_siege_frequency( "hunter_siege_frequency", "12" );
 
 #define HUNTER_SIEGE_MAX_DIST_MODIFIER 2.0f
 
+#define HUNTER_MINELAYER_MAX_MINES 3
+
 enum HunterSize {
 	HUNTER_SIZE_TINY,
 	HUNTER_SIZE_NORMAL,
@@ -1390,6 +1392,7 @@ public:
 	// Inputs
 	//---------------------------------
 	void			InputDodge( inputdata_t &inputdata );
+	void			InputDecrementMine(inputdata_t& inputdata);
 	void			InputFlankEnemy( inputdata_t &inputdata );
 	void			InputDisableShooting( inputdata_t &inputdata );
 	void			InputEnableShooting( inputdata_t &inputdata );
@@ -1672,6 +1675,7 @@ private:
 	CAI_HunterEscortBehavior m_EscortBehavior;
 
 	int m_nFlechettesQueued;
+	int m_nMinesLaid;
 	int m_nClampedShots;				// The number of consecutive shots fired at an out-of-max yaw target.
 
 	float m_flNextRangeAttack2Time;		// Time when we can fire another volley of flechettes.
@@ -1785,6 +1789,7 @@ BEGIN_DATADESC( CNPC_Hunter )
 	DEFINE_EMBEDDED( m_EyeSwitchTimer ),
 
 	DEFINE_FIELD( m_nFlechettesQueued, FIELD_INTEGER ),
+	DEFINE_FIELD(m_nMinesLaid, FIELD_INTEGER),
 	DEFINE_FIELD( m_nClampedShots, FIELD_INTEGER ),
 	DEFINE_FIELD( m_flNextRangeAttack2Time, FIELD_TIME ),
 	DEFINE_FIELD( m_flNextFlechetteTime, FIELD_TIME ),
@@ -1793,6 +1798,7 @@ BEGIN_DATADESC( CNPC_Hunter )
 
 	// inputs
 	DEFINE_INPUTFUNC( FIELD_VOID, "Dodge", InputDodge ),
+	DEFINE_INPUTFUNC(FIELD_VOID, "DecrementMine", InputDecrementMine),
 	DEFINE_INPUTFUNC( FIELD_VOID, "FlankEnemy", InputFlankEnemy ),
 	DEFINE_INPUTFUNC( FIELD_STRING, "DisableShooting", InputDisableShooting ),
 	DEFINE_INPUTFUNC( FIELD_STRING, "EnableShooting", InputEnableShooting ),
@@ -2055,6 +2061,7 @@ void CNPC_Hunter::Spawn()
 	NPCInit();
 
 	m_bEnableSquadShootDelay = true;
+	m_nMinesLaid = 0;
 
 	m_flDistTooFar = hunter_flechette_max_range.GetFloat();
 
@@ -3914,6 +3921,27 @@ void CNPC_Hunter::StartTask( const Task_t *pTask )
 
 		case TASK_HUNTER_CHARGE:
 		{
+			if (m_size == HUNTER_MINELAYER) {
+				if (m_nMinesLaid < HUNTER_MINELAYER_MAX_MINES) {
+					m_nMinesLaid++;
+					
+					int attachment = LookupAttachment("head_radius_measure");
+
+					if (attachment > -1)
+					{
+						Vector vecOrigin;
+						QAngle angles;
+						CBaseEntity* pEnt = CreateEntityByName("combine_mine");
+						GetAttachment(attachment, vecOrigin, angles);
+
+						pEnt->SetAbsOrigin(vecOrigin - Vector(0,0,16));
+						pEnt->SetAbsAngles(GetAbsAngles());
+						pEnt->SetOwnerEntity(this);
+						pEnt->Spawn();
+					}
+
+				}
+			}
 			SetIdealActivity( ( Activity )ACT_HUNTER_CHARGE_START );
 			break;
 		}
@@ -4978,6 +5006,14 @@ void CNPC_Hunter::InputDodge( inputdata_t &inputdata )
 {
 	SetCondition( COND_HUNTER_FORCED_DODGE );
 }
+
+void CNPC_Hunter::InputDecrementMine(inputdata_t& inputdata)
+{
+	if (m_nMinesLaid > 0) {
+		m_nMinesLaid--;
+	}
+}
+
 
 
 //-----------------------------------------------------------------------------
@@ -6773,7 +6809,7 @@ bool CNPC_Hunter::ShootFlechette( CBaseEntity *pTargetEntity, bool bSingleShot )
 
 	if ((m_size == HUNTER_MINELAYER) && (nShotNum < 1)) {
 		float rand = RandomFloat();
-		if (rand > 0.2) {
+		if (rand > 0.5) {
 			CHunterFlechette* pFlechette = CHunterFlechette::FlechetteCreate(vecSrc, angShoot, this, FLECHETTE_MISSILE);
 			pFlechette->AddEffects(EF_NOSHADOW);
 			vecShoot *= hunter_flechette_speed.GetFloat();

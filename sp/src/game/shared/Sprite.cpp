@@ -439,6 +439,8 @@ void CSprite::AnimateUntilDead( void )
 {
 	if ( gpGlobals->curtime > m_flDieTime )
 	{
+		SetSolid(SOLID_NONE);
+		SetTouch(NULL);
 		Remove( );
 	}
 	else

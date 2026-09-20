@@ -37,6 +37,8 @@
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+#include <props.h>
+#include <particle_parse.h>
 
 int g_fCombineQuestion;				// true if an idle grunt asked a question. Cleared when someone answers. YUCK old global from grunt code
 
@@ -238,12 +240,16 @@ DEFINE_AIGRENADE_DATADESC()
 DEFINE_FIELD( m_iLastAnimEventHandled, FIELD_INTEGER ),
 #endif
 DEFINE_FIELD( m_fIsElite, FIELD_BOOLEAN ),
+DEFINE_FIELD( m_fIsNova, FIELD_BOOLEAN),
+DEFINE_FIELD(m_fIsGrunt, FIELD_BOOLEAN),
 #ifndef MAPBASE
 DEFINE_FIELD( m_vecAltFireTarget, FIELD_VECTOR ),
 #endif
 
 DEFINE_KEYFIELD( m_iTacticalVariant, FIELD_INTEGER, "tacticalvariant" ),
 DEFINE_KEYFIELD( m_iPathfindingVariant, FIELD_INTEGER, "pathfindingvariant" ),
+DEFINE_KEYFIELD(m_bJetpackUser, FIELD_BOOLEAN, "IsJetpackUser"),
+DEFINE_FIELD(m_pMyJetPack,FIELD_EHANDLE)
 
 END_DATADESC()
 
@@ -254,6 +260,7 @@ END_DATADESC()
 CNPC_Combine::CNPC_Combine()
 {
 	m_vecTossVelocity = vec3_origin;
+
 }
 
 
@@ -414,15 +421,23 @@ void CNPC_Combine::InputSetPoliceGoal( inputdata_t &inputdata )
 //-----------------------------------------------------------------------------
 void CNPC_Combine::Precache()
 {
+	if (m_bJetpackUser) {
+		PrecacheModel(JETMODEL);
+		PrecacheParticleSystem(JETPARTICLE);
+	}
 	PrecacheModel("models/Weapons/w_grenade.mdl");
 	UTIL_PrecacheOther( "npc_handgrenade" );
-
+	PrecacheParticleSystem(BREAKPARTICLE);
 	PrecacheScriptSound( "NPC_Combine.GrenadeLaunch" );
 	PrecacheScriptSound( "NPC_Combine.WeaponBash" );
 #ifndef MAPBASE // Now that we use WeaponSound(SPECIAL1), this isn't necessary
 	PrecacheScriptSound( "Weapon_CombineGuard.Special1" );
 #endif
-
+	//if (m_fIsGrunt) 
+	{
+		PrecacheScriptSound(PUNTSOUND);
+		PrecacheScriptSound(TINGSOUND);
+	}
 	BaseClass::Precache();
 }
 
@@ -443,6 +458,7 @@ void CNPC_Combine::Activate()
 //-----------------------------------------------------------------------------
 void CNPC_Combine::Spawn( void )
 {
+
 	SetHullType(HULL_HUMAN);
 	SetHullSizeNormal();
 
@@ -488,7 +504,21 @@ void CNPC_Combine::Spawn( void )
 	m_flAlertPatrolTime			= 0;
 
 	m_flNextAltFireTime = gpGlobals->curtime;
+	// TODO: rewrite to use enums instead
+	if (V_strcmp(GetModelName().ToCStr(), "models/combine_soldirt_prisonguard.mdl") == 0 || V_strcmp(GetModelName().ToCStr(), "models/combine_soldier_prisonguard.mdl") == 0) {
+		m_fIsNova = true;
+	}
 
+	if (V_strcmp(GetModelName().ToCStr(), GRUNTMODEL) == 0) {
+		m_fIsGrunt = true;
+		SetSkin(1);
+		SetModelScale(1.0);
+		SetMaxHealth(220);
+		SetHealth(220);
+		SetMass(1800);
+		m_flSpeedModifier = 0.5;
+	
+	}
 	NPCInit();
 
 #ifdef MAPBASE
@@ -499,6 +529,39 @@ void CNPC_Combine::Spawn( void )
 	}
 #endif
 	SetStatusThink();
+	// DR: handle jetpack spawning in
+	if (m_bJetpackUser) {
+		//CPhysicsCannister* pCanister = CREATE_ENTITY(CPhysicsCannister, "physics_cannister");
+		CPhysicsCannister* pCanister = (CPhysicsCannister*)CreateEntityByName("physics_cannister");
+		if (pCanister) {
+			Vector up;
+			Vector fwd;
+			Vector rt;
+			QAngle jangle(0, 0, -180);
+			GetVectors(&fwd, &rt, &up);
+
+			pCanister->SetModel(JETMODEL);
+			pCanister->Precache();
+			pCanister->Spawn();
+			pCanister->SetRenderColor(34, 44, 56);
+			//pCanister->SetModelScale(0.6);
+			pCanister->SetAbsAngles(jangle);
+			pCanister->SetAbsOrigin(GetAbsOrigin() + fwd * -11);
+			pCanister->SetAbsOrigin(Vector(pCanister->GetAbsOrigin().x, pCanister->GetAbsOrigin().y, pCanister->GetAbsOrigin().z + 63));
+			int iAttachment = LookupAttachment("beam_damage");
+			pCanister->SetParent(this,iAttachment);
+			// TODO: obey by SetJetState
+			pCanister->m_iJetpackState = JETPACK_OFF;
+
+			m_pMyJetPack.Set(pCanister);
+						
+		}
+
+
+		
+		
+	}
+
 }
 
 //-----------------------------------------------------------------------------
@@ -544,7 +607,7 @@ void CNPC_Combine::PostNPCInit()
 void CNPC_Combine::GatherConditions()
 {
 	BaseClass::GatherConditions();
-
+	ClearCondition(COND_LIGHT_DAMAGE);
 	ClearCondition( COND_COMBINE_ATTACK_SLOT_AVAILABLE );
 
 	if( GetState() == NPC_STATE_COMBAT )
@@ -593,6 +656,8 @@ void CNPC_Combine::PrescheduleThink()
 
 	if ( IsOnFire() )
 	{
+		if (!m_fIsGrunt)
+
 		SetCondition( COND_COMBINE_ON_FIRE );
 	}
 	else
@@ -674,29 +739,35 @@ void CNPC_Combine::DelaySquadAltFireAttack( float flDelay )
 //-----------------------------------------------------------------------------
 float CNPC_Combine::MaxYawSpeed( void )
 {
+	float retFl = 0;
 	switch( GetActivity() )
 	{
 	case ACT_TURN_LEFT:
 	case ACT_TURN_RIGHT:
-		return 45;
+		retFl = 45;
 		break;
 	case ACT_RUN:
 	case ACT_RUN_HURT:
-		return 15;
+		retFl = 15;
 		break;
 	case ACT_WALK:
 	case ACT_WALK_CROUCH:
-		return 25;
+		retFl = 25;
 		break;
 	case ACT_RANGE_ATTACK1:
 	case ACT_RANGE_ATTACK2:
 	case ACT_MELEE_ATTACK1:
 	case ACT_MELEE_ATTACK2:
-		return 35;
+		retFl = 35;
 	default:
-		return 35;
+		retFl = 35;
 		break;
 	}
+
+	if (m_fIsGrunt) {
+		retFl = retFl / 1024;
+	}
+	return retFl;
 }
 
 //-----------------------------------------------------------------------------
@@ -983,7 +1054,19 @@ void CNPC_Combine::StartTask( const Task_t *pTask )
 
 	case TASK_ANNOUNCE_ATTACK:
 		{
-			// If Primary Attack
+			
+
+			if (m_bJetpackUser) {
+				float chance = 0.0;
+				float minChance = 0.99;
+				chance = RandomFloat(minChance, 1.0);
+				if (chance > minChance) {
+					if (m_pMyJetPack.IsValid() && m_pMyJetPack.Get()) {
+						m_pMyJetPack.Get()->SetJetState(JETPACK_STARTING);
+					}
+				}
+			}
+// If Primary Attack
 			if ((int)pTask->flTaskData == 1)
 			{
 				// -----------------------------------------------------------
@@ -1208,11 +1291,19 @@ void CNPC_Combine::StartTask( const Task_t *pTask )
 				break;
 			}
 #endif
-
-			m_nShots = GetActiveWeapon()->GetRandomBurst();
+			if (m_fIsNova) { m_nShots = GetActiveWeapon()->GetMaxClip1(); } 
+			else m_nShots = GetActiveWeapon()->GetRandomBurst();
 			m_flShotDelay = GetActiveWeapon()->GetFireRate();
-
-			m_flNextAttack = gpGlobals->curtime + m_flShotDelay - 0.1;
+			int fired = GetActiveWeapon()->GetMaxClip1() - m_nShots;
+			// DevMsg("ACT_RANGE_ATTACK1\n");
+			ResetIdealActivity(ACT_RANGE_ATTACK1);
+			m_flLastAttackTime = gpGlobals->curtime;
+			// only use this for minigun fire 
+			// minigun speed formula: (SHOTS_TO_REACH / (fired + SHOTS_TO_REACH)) + MIN_INTERVAL
+			if (FClassnameIs(GetActiveWeapon(), "weapon_m249") || FClassnameIs(GetActiveWeapon(), "weapon_minigun")) {
+				m_flShotDelay = (MINIGUN_SHOTS_TO_REACH / (fired + MINIGUN_SHOTS_TO_REACH)) + MINIGUN_MIN_INTERVAL / 4;
+			}
+			m_flNextAttack = gpGlobals->curtime + m_flShotDelay;
 			ResetIdealActivity( ACT_RANGE_ATTACK1 );
 			m_flLastAttackTime = gpGlobals->curtime;
 		}
@@ -1220,15 +1311,17 @@ void CNPC_Combine::StartTask( const Task_t *pTask )
 
 	case TASK_COMBINE_DIE_INSTANTLY:
 		{
+		if (!m_fIsGrunt) {
 			CTakeDamageInfo info;
 
-			info.SetAttacker( this );
-			info.SetInflictor( this );
-			info.SetDamage( m_iHealth );
-			info.SetDamageType( pTask->flTaskData );
-			info.SetDamageForce( Vector( 0.1, 0.1, 0.1 ) );
+			info.SetAttacker(this);
+			info.SetInflictor(this);
+			info.SetDamage(m_iHealth);
+			info.SetDamageType(pTask->flTaskData);
+			info.SetDamageForce(Vector(0.1, 0.1, 0.1));
 
-			TakeDamage( info );
+			TakeDamage(info);
+		}
 
 			TaskComplete();
 		}
@@ -1376,10 +1469,17 @@ void CNPC_Combine::RunTask( const Task_t *pTask )
 				{
 					if (--m_nShots > 0)
 					{
+						int fired = GetActiveWeapon()->GetMaxClip1() - m_nShots;
 						// DevMsg("ACT_RANGE_ATTACK1\n");
 						ResetIdealActivity( ACT_RANGE_ATTACK1 );
 						m_flLastAttackTime = gpGlobals->curtime;
-						m_flNextAttack = gpGlobals->curtime + m_flShotDelay - 0.1;
+						// only use this for minigun fire 
+						// minigun speed formula: (SHOTS_TO_REACH / (fired + SHOTS_TO_REACH)) + MIN_INTERVAL
+						if (FClassnameIs(GetActiveWeapon(), "weapon_m249") || FClassnameIs(GetActiveWeapon(), "weapon_minigun")) {
+							//m_flShotDelay = (MINIGUN_SHOTS_TO_REACH / (fired + MINIGUN_SHOTS_TO_REACH)) + MINIGUN_MIN_INTERVAL;
+							m_flShotDelay = 0.35 * powf(0.939283,fired) + MINIGUN_MIN_INTERVAL;
+						}
+						m_flNextAttack = gpGlobals->curtime + m_flShotDelay;
 					}
 					else
 					{
@@ -1576,7 +1676,8 @@ Activity CNPC_Combine::NPC_BackupActivity( Activity eNewActivity )
 Activity CNPC_Combine::NPC_TranslateActivity( Activity eNewActivity )
 {
 	//Slaming this back to ACT_COMBINE_BUGBAIT since we don't want ANYTHING to change our activity while we burn.
-	if ( HasCondition( COND_COMBINE_ON_FIRE ) )
+	if (HasCondition(COND_COMBINE_ON_FIRE))
+		if (!m_fIsGrunt)
 		return BaseClass::NPC_TranslateActivity( ACT_COMBINE_BUGBAIT );
 
 	if (eNewActivity == ACT_RANGE_ATTACK2)
@@ -2925,6 +3026,10 @@ void CNPC_Combine::HandleAnimEvent( animevent_t *pEvent )
 						pBCC->TakeDamage( info );
 
 						EmitSound( "NPC_Combine.WeaponBash" );
+						if (m_fIsGrunt) {
+						EmitSound(PUNTSOUND);
+						pBCC->ApplyAbsVelocityImpulse(forward * GRUNT_PUNT_MUL + Vector(0,0,300));
+						}
 					}
 				}			
 
@@ -3656,6 +3761,69 @@ int CNPC_Combine::MeleeAttack1Conditions ( float flDot, float flDist )
 	}
 
 	return COND_CAN_MELEE_ATTACK1;
+}
+
+void CNPC_Combine::CNPC_Combine::TraceAttack(const CTakeDamageInfo& inputInfo, const Vector& vecDir, trace_t* ptr, CDmgAccumulator* pAccumulator) {
+	CTakeDamageInfo newInfo = inputInfo;
+	if (m_fIsGrunt) {
+		DevMsg("DMG OWNER = %d %s\n", newInfo.GetAttacker(), newInfo.GetAttacker()->GetClassname());
+		DevMsg("DMG TYPE = %d\n", newInfo.GetDamageType());
+		if (newInfo.GetDamageType() & DMG_BULLET || newInfo.GetDamageType() & DMG_BUCKSHOT) {
+			bool isLow = true;
+			if (newInfo.GetInflictor() == this->GetBaseEntity() || newInfo.GetInflictor() == this->GetBaseEntity()) {
+				//
+			}
+			else {
+				isLow = newInfo.GetDamage() < 20;
+				newInfo.ScaleDamage(GRUNT_BULLET_MUL);
+			}
+			if (isLow) {
+				float roll = RandomFloat();
+				if (roll < GRUNT_BULLET_CHANCE) {
+					Vector pos = newInfo.GetDamagePosition();
+					Vector dir = newInfo.GetDamageForce().Normalized();
+					FireBulletsInfo_t binfo;
+					binfo.m_vecSrc = pos - dir * 16;
+					binfo.m_vecDirShooting = -dir;
+					binfo.m_flDamage = newInfo.GetDamage();
+
+					//newInfo.SetDamageType(DMG_GENERIC);
+					CAI_BaseNPC* aibnpcp = this;
+					binfo.m_pAttacker = aibnpcp;
+					DevMsg("bullet m_pAttacker = %d %s\n", binfo.m_pAttacker, binfo.m_pAttacker->GetClassname());
+					binfo.m_pAdditionalIgnoreEnt = this;
+					binfo.m_iShots = 1;
+					//binfo.m_iTracerFreq = 1.0f;
+					binfo.m_flDistance = MAX_TRACE_LENGTH;
+					binfo.m_iAmmoType = newInfo.GetAmmoType();
+					binfo.m_iPlayerDamage = newInfo.GetDamage();
+					binfo.m_vecSpread = VECTOR_CONE_15DEGREES * 2;
+					FireBullets(binfo);
+					newInfo.ScaleDamage(0.1);
+					newInfo.SetDamageType(DMG_PREVENT_PHYSICS_FORCE);
+
+					EmitSound(TINGSOUND);
+#ifdef DEBUG
+
+					//debugoverlay->AddLineOverlay(binfo.m_vecSrc, pos + binfo.m_vecDirShooting * 2024, 200, 10, 10, true, 1);
+#endif // DEBUG
+
+
+				}
+			}
+		}
+		else
+			if (newInfo.GetDamageType() == DMG_BLAST) {
+				newInfo.ScaleDamage(GRUNT_EXPLOSION_MUL);
+
+			}
+	}
+	BaseClass::TraceAttack(newInfo, vecDir, ptr, pAccumulator);
+}
+
+int CNPC_Combine::CNPC_Combine::OnTakeDamage_Alive(const CTakeDamageInfo& info)
+{
+	return BaseClass::OnTakeDamage_Alive(info);
 }
 
 //-----------------------------------------------------------------------------

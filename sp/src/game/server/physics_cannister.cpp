@@ -25,9 +25,12 @@
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+#include <particle_parse.h>
 
 #define SF_CANNISTER_ASLEEP		0x0001
 #define SF_CANNISTER_EXPLODE	0x0002
+
+
 
 BEGIN_SIMPLE_DATADESC( CThrustController )
 
@@ -53,6 +56,7 @@ BEGIN_DATADESC( CPhysicsCannister )
 	DEFINE_KEYFIELD( m_damage, FIELD_FLOAT, "expdamage" ),
 	DEFINE_KEYFIELD( m_damageRadius, FIELD_FLOAT, "expradius" ),
 	DEFINE_FIELD( m_activateTime, FIELD_TIME ),
+	DEFINE_FIELD( m_flNextJetpackEvent, FIELD_TIME ),
 	DEFINE_KEYFIELD( m_gasSound, FIELD_SOUNDNAME, "gassound" ),
 	DEFINE_FIELD( m_bFired, FIELD_BOOLEAN ),
 
@@ -60,6 +64,9 @@ BEGIN_DATADESC( CPhysicsCannister )
 	DEFINE_FIELD( m_hPhysicsAttacker, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_flLastPhysicsInfluenceTime, FIELD_TIME ),
 	DEFINE_FIELD( m_hLauncher, FIELD_EHANDLE ),
+
+	// DR: Jetpack fields
+	DEFINE_FIELD( m_iJetpackState, FIELD_INTEGER ),
 
 	DEFINE_INPUTFUNC( FIELD_VOID, "Activate", InputActivate ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "Deactivate", InputDeactivate ),
@@ -98,6 +105,8 @@ void CPhysicsCannister::Spawn( void )
 		// must have a physics object or code will crash later
 		UTIL_Remove(this);
 	}
+
+	m_iJetpackState = JETPACK_NOT;
 }
 
 void CPhysicsCannister::OnRestore()
@@ -196,15 +205,24 @@ int CPhysicsCannister::OnTakeDamage( const CTakeDamageInfo &info )
 
 void CPhysicsCannister::TraceAttack( const CTakeDamageInfo &info, const Vector &dir, trace_t *ptr, CDmgAccumulator *pAccumulator )
 {
-	if ( !m_active && ptr->hitgroup != 0 )
+	bool isJetPack = false;
+	if (GetParent() && GetParent()->GetFlags() & FL_NPC) {
+		isJetPack = true;
+	}
+	if ((!m_active && isJetPack) || (!m_active && ptr->hitgroup != 0))
 	{
+
 		Vector direction = -dir;
 		direction.z -= 5;
 		VectorNormalize( direction );
 		CannisterActivate( info.GetAttacker(), direction );
+
 	}
 	BaseClass::TraceAttack( info, dir, ptr, pAccumulator );
 }
+
+
+
 
 
 //-----------------------------------------------------------------------------
@@ -212,11 +230,32 @@ void CPhysicsCannister::TraceAttack( const CTakeDamageInfo &info, const Vector &
 //-----------------------------------------------------------------------------
 void CPhysicsCannister::CannisterActivate( CBaseEntity *pActivator, const Vector &thrustOffset )
 {
-	// already active or spent
-	if ( m_active || !m_thrustTime )
+
+
+	// already active or ~~spent~~
+	if ( m_active )
 	{
 		return;
 	}
+
+	bool isJetPack = false;
+	if (GetParent() && GetParent()->GetFlags() & FL_NPC) {
+		isJetPack = true;
+		SetOwnerEntity(GetParent());
+	}
+	if (isJetPack) {
+
+		SetParent(NULL);
+		//SetLocalOrigin(vec3_origin);
+
+		VPhysicsGetObject()->EnableMotion(true);
+		VPhysicsGetObject()->Wake();
+		m_flNextJetpackEvent = gpGlobals->curtime;
+		SetJetState(JETPACK_UNCONTROLLABLE);
+		return;
+		//ent->SetParent(this, 0);
+	}
+
 
 	m_hLauncher = pActivator;
 
@@ -264,6 +303,7 @@ void CPhysicsCannister::CannisterActivate( CBaseEntity *pActivator, const Vector
 
 		EmitSound( filter, entindex(), ep );
 	}
+	
 }
 
 //-----------------------------------------------------------------------------
@@ -464,9 +504,82 @@ CBasePlayer *CPhysicsCannister::HasPhysicsAttacker( float dt )
 	}
 	return NULL;
 }
+
+void CPhysicsCannister::SetJetState(JETPACK_STATES state)
+{
+	JETPACK_STATES oldState = m_iJetpackState;
+	switch (oldState) {
+	case JETPACK_NOT:
+		return;
+
+	case JETPACK_UNCONTROLLABLE:
+		return;
+
+	case JETPACK_OFF:
+		{
+			switch (state) {
+				case JETPACK_STARTING:
+					if (CBaseEntity* cbep = GetParent() ) {
+						// TODO: better cooldown check?
+						if ((gpGlobals->curtime > m_flNextJetpackEvent)) {
+							DispatchParticleEffect(JETPARTICLE, PATTACH_POINT_FOLLOW, this, this->LookupAttachment("nozzle"));
+							cbep->SetGravity(cbep->GetGravity() * 0.05);
+							m_flNextJetpackEvent = gpGlobals->curtime + 0.5;
+							m_iJetpackState = state;
+						}
+
+					}
+					break;
+
+				case JETPACK_UNCONTROLLABLE:
+					m_iJetpackState = state;
+
+			}
+		}
+		break;
+
+	case JETPACK_STARTING:
+		{
+			switch (state) {
+				case JETPACK_FLIGHT:
+					m_iJetpackState = state;
+					m_flNextJetpackEvent = gpGlobals->curtime + 5.0;
+					break;
+					
+				case JETPACK_UNCONTROLLABLE:
+					m_iJetpackState = state;
+					break;
+			}
+		}
+		break;
+
+	case JETPACK_FLIGHT:
+		{
+			switch (state) {
+				case JETPACK_OFF:
+					m_iJetpackState = state;
+					m_flNextJetpackEvent = gpGlobals->curtime + 8.0;
+					break;
+				
+				case JETPACK_UNCONTROLLABLE:
+					m_iJetpackState = state;
+					break;
+
+			}
+		}
+		break;
+
+	}
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: Update the visible representation of the physic system's representation of this object
 //-----------------------------------------------------------------------------
+
+void CPhysicsCannister::JetThink() {
+
+}
+
 void CPhysicsCannister::VPhysicsUpdate( IPhysicsObject *pPhysics )
 {
 	BaseClass::VPhysicsUpdate( pPhysics );
@@ -480,4 +593,74 @@ void CPhysicsCannister::VPhysicsUpdate( IPhysicsObject *pPhysics )
 			RemoveSpawnFlags( SF_CANNISTER_ASLEEP );
 		}
 	}
+
+	// DR: use this as the think function lol?
+	
+	if (m_iJetpackState != JETPACK_NOT) {
+#ifdef DEBUG
+		//DevMsg("CURRENT STATE: %d NEXT EVENT IN: %f\n", m_iJetpackState, m_flNextJetpackEvent - gpGlobals->curtime);
+		DebugDrawLine(GetAbsOrigin(), GetAbsOrigin() + Vector(0, 0, 1024), 255, 255, 255, true, 0.1);
+		DebugDrawLine(vec3_origin, GetAbsOrigin(), 255, 255, 255, true, 0.1);
+		debugoverlay->AddBoxOverlay(GetAbsOrigin(), -Vector(100, 100, 100), Vector(100, 100, 100), GetAbsAngles(), 255, 255, 255, 25, 0.03);
+#endif
+		
+		switch (m_iJetpackState) {
+		case JETPACK_STARTING:
+			if (gpGlobals->curtime < m_flNextJetpackEvent) {
+				if (CBaseEntity* cbep = GetParent()) {
+					cbep->ApplyAbsVelocityImpulse(Vector(0, 0, 5));
+				}
+			}
+			else {
+				SetJetState(JETPACK_FLIGHT);
+			}
+			break;
+
+		case JETPACK_FLIGHT:
+			if (gpGlobals->curtime < m_flNextJetpackEvent) {
+				if (CBaseEntity* cbep = GetParent()) {
+					//cbep->ApplyAbsVelocityImpulse(Vector(0, 0, 1));
+				}
+			}
+			else {
+				SetJetState(JETPACK_OFF);
+			}
+			break;
+		
+
+		case JETPACK_UNCONTROLLABLE:
+			if ((gpGlobals->curtime < m_flNextJetpackEvent) && false) {
+				if (CBaseEntity* cbep = GetParent()) {
+					//cbep->ApplyAbsVelocityImpulse(Vector(0, 0, 1));
+				}
+				else {
+					if (GetOwnerEntity()) {
+						if (GetOwnerEntity()->GetParent()) {
+
+						}
+						else {
+							CBaseEntity* ent = GetOwnerEntity();
+							Vector orig = GetAbsOrigin();
+							QAngle angles = GetAbsAngles();
+							if (CBaseCombatCharacter* pBCC = ToBaseCombatCharacter(ent)) {
+								Vector pos;
+								Vector up;
+								Vector fwd;
+								Vector rt;
+								QAngle jangle(0, 0, -180);
+								pBCC->GetVectors(&fwd, &rt, &up);
+								pBCC->GetAttachment("beam_damage", pos, angles);
+								//SetAbsOrigin(pBCC->GetAbsOrigin());
+								//SetAbsAngles(angles);
+
+								SetOwnerEntity(NULL);
+							}
+						}
+					}
+
+				}
+			}
+		}
+	}
+
 }

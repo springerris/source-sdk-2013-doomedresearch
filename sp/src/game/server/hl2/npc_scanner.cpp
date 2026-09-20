@@ -441,10 +441,12 @@ void CNPC_CScanner::Event_Killed( const CTakeDamageInfo &info )
 		Vector vecDelta = GetLocalOrigin() - GetEnemy()->GetLocalOrigin();
 		if ( ( vecDelta.z > 120 ) && ( vecDelta.Length() > 360 ) || HasSpawnFlags(SF_CSCANNER_ALWAYSDIVE))
 		{	
-			// If I'm divebombing, don't take any more damage. It will make Event_Killed() be called again.
-			// This is especially bad if someone machineguns the divebombing scanner. 
-			AttackDivebomb();
-			return;
+			if (!(info.GetDamageType() & DMG_BLAST || info.GetDamageType() & DMG_CRUSH || info.GetDamage() > 20)) {
+				// If I'm divebombing, don't take any more damage. It will make Event_Killed() be called again.
+				// This is especially bad if someone machineguns the divebombing scanner. 
+				AttackDivebomb();
+				return;
+			}
 		}
 	}
 

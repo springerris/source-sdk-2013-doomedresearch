@@ -185,6 +185,8 @@ protected:
 	int					m_nPoseFaceHoriz;
 
 	bool				m_bHasSpoken;
+	// DR: fix explosions that deal damage from scanners creating a gib loop because there is a brief moment they can infinitely gib each other and spewing 100s of gibs
+	bool				m_fGibbed;
 
 	// Movement
 	float				m_flFlyNoiseBase;

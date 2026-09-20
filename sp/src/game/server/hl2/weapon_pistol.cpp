@@ -23,6 +23,8 @@
 
 #define	PISTOL_FASTEST_REFIRE_TIME		0.1f
 #define	PISTOL_FASTEST_DRY_REFIRE_TIME	0.2f
+#define PISTOL_SECONDARY_RECHARGE		0.55f;
+#define PISTOL_BUSRT_INTERVAL		0.03f;
 
 #define	PISTOL_ACCURACY_SHOT_PENALTY_TIME		0.1f	// Applied amount of time each shot adds to the time we must recover from
 #define	PISTOL_ACCURACY_MAXIMUM_PENALTY_TIME	0.9f	// Maximum penalty to deal out
@@ -49,6 +51,7 @@ public:
 	void	ItemPreFrame( void );
 	void	ItemBusyFrame( void );
 	void	PrimaryAttack( void );
+	void	SecondaryAttack( void );
 	void	AddViewKick( void );
 	void	DryFire( void );
 	void	Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatCharacter *pOperator );
@@ -82,7 +85,7 @@ public:
 											1.0f ); 
 
 			// We lerp from very accurate to inaccurate over time
-			VectorLerp( VECTOR_CONE_1DEGREES, VECTOR_CONE_6DEGREES, ramp, cone );
+			VectorLerp( VECTOR_CONE_1DEGREES, VECTOR_CONE_3DEGREES, ramp, cone );
 		}
 		else
 		{
@@ -119,6 +122,9 @@ public:
 private:
 	float	m_flSoonestPrimaryAttack;
 	float	m_flLastAttackTime;
+	float	m_flSoonestSecondaryAttack;
+	float	m_flSoonestBurst;
+	int		m_iRemainingBurst;
 	float	m_flAccuracyPenalty;
 	int		m_nNumShotsFired;
 };
@@ -133,6 +139,9 @@ PRECACHE_WEAPON_REGISTER( weapon_pistol );
 BEGIN_DATADESC( CWeaponPistol )
 
 	DEFINE_FIELD( m_flSoonestPrimaryAttack, FIELD_TIME ),
+	DEFINE_FIELD(m_flSoonestPrimaryAttack, FIELD_TIME),
+	DEFINE_FIELD(m_flSoonestBurst, FIELD_TIME),
+	DEFINE_FIELD(m_iRemainingBurst, FIELD_INTEGER),
 	DEFINE_FIELD( m_flLastAttackTime,		FIELD_TIME ),
 	DEFINE_FIELD( m_flAccuracyPenalty,		FIELD_FLOAT ), //NOTENOTE: This is NOT tracking game time
 	DEFINE_FIELD( m_nNumShotsFired,			FIELD_INTEGER ),
@@ -296,6 +305,8 @@ int GetPistolActtableCount()
 CWeaponPistol::CWeaponPistol( void )
 {
 	m_flSoonestPrimaryAttack = gpGlobals->curtime;
+	m_flSoonestSecondaryAttack = gpGlobals->curtime;
+	m_iRemainingBurst = 0;
 	m_flAccuracyPenalty = 0.0f;
 
 	m_fMinRange1		= 24;
@@ -398,17 +409,22 @@ void CWeaponPistol::DryFire( void )
 //-----------------------------------------------------------------------------
 void CWeaponPistol::PrimaryAttack( void )
 {
-	if ( ( gpGlobals->curtime - m_flLastAttackTime ) > 0.5f )
-	{
-		m_nNumShotsFired = 0;
-	}
-	else
-	{
-		m_nNumShotsFired++;
-	}
+	if (m_iRemainingBurst < 1) {
+		if ((gpGlobals->curtime - m_flLastAttackTime) > 0.5f)
+		{
+			m_nNumShotsFired = 0;
+		}
+		else
+		{
+			m_nNumShotsFired++;
+		}
+	
 
+	
+	}
 	m_flLastAttackTime = gpGlobals->curtime;
 	m_flSoonestPrimaryAttack = gpGlobals->curtime + PISTOL_FASTEST_REFIRE_TIME;
+	
 	CSoundEnt::InsertSound( SOUND_COMBAT, GetAbsOrigin(), SOUNDENT_VOLUME_PISTOL, 0.2, GetOwner() );
 
 	CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
@@ -420,15 +436,110 @@ void CWeaponPistol::PrimaryAttack( void )
 		// not be the ideal way to achieve this, but it's cheap and it works, which is
 		// great for a feature we're evaluating. (sjb)
 		pOwner->ViewPunchReset();
+		if (m_iRemainingBurst == 1) {
+			pOwner->ViewPunch(QAngle(-4, 0, 0));
+		}
 	}
 
-	BaseClass::PrimaryAttack();
+	
+	if (m_iRemainingBurst < 1) {
+		BaseClass::PrimaryAttack();
+		// Add an accuracy penalty which can move past our maximum penalty time if we're really spastic
+		m_flAccuracyPenalty += PISTOL_ACCURACY_SHOT_PENALTY_TIME;
+	}
+	else {
+		// If my clip is empty (and I use clips) start reload
+		if (UsesClipsForAmmo1() && !m_iClip1)
+		{
+			
+			Reload();
+			return;
+		}
 
-	// Add an accuracy penalty which can move past our maximum penalty time if we're really spastic
-	m_flAccuracyPenalty += PISTOL_ACCURACY_SHOT_PENALTY_TIME;
+		// Only the player fires this way so we can cast
+		CBasePlayer* pPlayer = ToBasePlayer(GetOwner());
 
+		if (!pPlayer)
+		{
+			return;
+		}
+
+		pPlayer->DoMuzzleFlash();
+
+		SendWeaponAnim(GetPrimaryAttackActivity());
+
+		// player "shoot" animation
+		pPlayer->SetAnimation(PLAYER_ATTACK1);
+
+		FireBulletsInfo_t info;
+		info.m_vecSrc = pPlayer->Weapon_ShootPosition();
+
+		info.m_vecDirShooting = pPlayer->GetAutoaimVector(AUTOAIM_SCALE_DEFAULT);
+
+		// To make the firing framerate independent, we may have to fire more than one bullet here on low-framerate systems, 
+		// especially if the weapon we're firing has a really fast rate of fire.
+		info.m_iShots = 0;
+		float fireRate = PISTOL_BUSRT_INTERVAL;
+
+		while (m_flSoonestBurst <= gpGlobals->curtime)
+		{
+			// MUST call sound before removing a round from the clip of a CMachineGun
+			WeaponSound(SINGLE, m_flSoonestBurst);
+			m_flSoonestBurst = m_flSoonestBurst + fireRate;
+			info.m_iShots++;
+			if (!fireRate)
+				break;
+		}
+
+		// Make sure we don't fire more than the amount in the clip
+		if (UsesClipsForAmmo1())
+		{
+			info.m_iShots = MIN(info.m_iShots, m_iClip1);
+			m_iClip1 -= info.m_iShots;
+		}
+		else
+		{
+			info.m_iShots = MIN(info.m_iShots, pPlayer->GetAmmoCount(m_iPrimaryAmmoType));
+			pPlayer->RemoveAmmo(info.m_iShots, m_iPrimaryAmmoType);
+		}
+
+		info.m_flDistance = MAX_TRACE_LENGTH;
+		info.m_iAmmoType = m_iPrimaryAmmoType;
+		info.m_iTracerFreq = 2;
+
+#if !defined( CLIENT_DLL )
+		// Fire the bullets
+		info.m_vecSpread = pPlayer->GetAttackSpread(this);
+#else
+		//!!!HACKHACK - what does the client want this function for? 
+		info.m_vecSpread = GetActiveWeapon()->GetBulletSpread();
+#endif // CLIENT_DLL
+
+		pPlayer->FireBullets(info);
+
+		if (!m_iClip1 && pPlayer->GetAmmoCount(m_iPrimaryAmmoType) <= 0)
+		{
+			// HEV suit - indicate out of ammo condition
+			pPlayer->SetSuitUpdate("!HEV_AMO0", FALSE, 0);
+		}
+
+		//Add our view kick in
+		AddViewKick();
+	}
 	m_iPrimaryAttacks++;
 	gamestats->Event_WeaponFired( pOwner, true, GetClassname() );
+}
+
+void CWeaponPistol::SecondaryAttack(void)
+{
+	if (gpGlobals->curtime > m_flSoonestSecondaryAttack && m_iRemainingBurst < 1)
+	{
+		m_iRemainingBurst = GetMaxBurst();
+		m_flSoonestBurst = gpGlobals->curtime;
+		m_flSoonestSecondaryAttack = gpGlobals->curtime + PISTOL_SECONDARY_RECHARGE;
+		m_flSoonestPrimaryAttack = gpGlobals->curtime + PISTOL_SECONDARY_RECHARGE;
+		m_flNextPrimaryAttack = gpGlobals->curtime + PISTOL_FASTEST_REFIRE_TIME + PISTOL_BUSRT_INTERVAL;
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -485,7 +596,16 @@ void CWeaponPistol::ItemPostFrame( void )
 		return;
 
 	//Allow a refire as fast as the player can click
-	if ( ( ( pOwner->m_nButtons & IN_ATTACK ) == false ) && ( m_flSoonestPrimaryAttack < gpGlobals->curtime ) )
+	if (m_iRemainingBurst > 0) {
+		if (gpGlobals->curtime > m_flSoonestBurst) {
+			PrimaryAttack();
+			m_flSoonestBurst = gpGlobals->curtime + PISTOL_BUSRT_INTERVAL;
+			m_iRemainingBurst--;
+
+		}
+		
+	} else 
+	if ( ( ( pOwner->m_nButtons & IN_ATTACK ) == false ) && ( m_flSoonestPrimaryAttack < gpGlobals->curtime ) && (m_iRemainingBurst < 1))
 	{
 		m_flNextPrimaryAttack = gpGlobals->curtime - 0.1f;
 	}
@@ -522,6 +642,7 @@ bool CWeaponPistol::Reload( void )
 	{
 		WeaponSound( RELOAD );
 		m_flAccuracyPenalty = 0.0f;
+		m_iRemainingBurst = 0;
 	}
 	return fRet;
 }

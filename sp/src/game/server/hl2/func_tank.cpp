@@ -4824,6 +4824,7 @@ void CFuncTankPhysCannister::Fire( int bulletCount, const Vector &barrelEnd, con
 	CPhysicsCannister *pCannister = (CPhysicsCannister *)m_hBarrelVolume->GetTouchedEntityOfType( "physics_cannister" );
 	if ( !pCannister )
 	{
+
 		// Play a no-ammo sound
 		return;
 	}

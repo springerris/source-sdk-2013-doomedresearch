@@ -1039,7 +1039,9 @@ void CWeaponCrossbow::FireSniperBolt(void)
 
 	Vector vecAiming = pOwner->GetAutoaimVector(0);
 	Vector eyeRight;
-	pOwner->EyeVectors(NULL, &eyeRight, NULL);
+	Vector eyeForward;
+	Vector eyeUp;
+	pOwner->EyeVectors(&eyeForward, &eyeRight, &eyeUp);
 	Vector vecSrc = pOwner->Weapon_ShootPosition();
 
 	int i = 0;
@@ -1085,9 +1087,9 @@ void CWeaponCrossbow::FireSniperBolt(void)
 
 	m_iClip1--;
 
-	CSpriteTrail* trail = CSpriteTrail::SpriteTrailCreate("sprites/laserbeam.vmt", pOwner->Weapon_ShootPosition()+ eyeRight*0.5, false);
+	CSpriteTrail* trail = CSpriteTrail::SpriteTrailCreate("sprites/laserbeam.vmt", pOwner->Weapon_ShootPosition()+ eyeRight*0.5 + eyeForward * 4.0 + eyeUp * -1.5, false);
 	trail->SetLifeTime(1.0);
-	trail->SetStartWidth(SNIPERBOLT_WIDTH*1.5);
+	trail->SetStartWidth(SNIPERBOLT_WIDTH*0.05);
 	trail->SetEndWidth(SNIPERBOLT_WIDTH*1.5);
 	trail->SetAbsVelocity(vecAiming * 16000);
 	trail->SetTransparency(kRenderTransAdd, 225, 112, 37, 255, kRenderFxNone);

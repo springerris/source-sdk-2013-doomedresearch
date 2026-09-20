@@ -276,7 +276,7 @@ void CGrenadeFrag::VPhysicsUpdate( IPhysicsObject *pPhysics )
 #if 0
 	UTIL_TraceHull( start, start + vel * gpGlobals->frametime, CollisionProp()->OBBMins(), CollisionProp()->OBBMaxs(), CONTENTS_HITBOX|CONTENTS_MONSTER|CONTENTS_SOLID, &filter, &tr );
 #else
-	UTIL_TraceLine( start, start + vel * gpGlobals->frametime * 2, CONTENTS_HITBOX|CONTENTS_MONSTER|CONTENTS_SOLID, &filter, &tr );
+	UTIL_TraceLine( start, start + vel * gpGlobals->frametime * 1.25, CONTENTS_HITBOX|CONTENTS_MONSTER|CONTENTS_SOLID, &filter, &tr );
 #endif
 	if ( tr.startsolid )
 	{
@@ -307,10 +307,21 @@ void CGrenadeFrag::VPhysicsUpdate( IPhysicsObject *pPhysics )
 		if ((tr.m_pEnt->IsPlayer() || ((tr.m_pEnt->GetFlags() & FL_NPC || tr.m_pEnt->GetMoveType() == MOVETYPE_PUSH) && tr.m_pEnt->GetHealth() > 0)))
 		{
 			if (!m_stuck) {
-				EmitSound("TripmineGrenade.Place");
-				SetParent(tr.m_pEnt);
-				SetCollisionGroup(COLLISION_GROUP_DEBRIS);
-				m_stuck = true;
+				if (tr.m_pEnt->IsPlayer() || ((tr.m_pEnt->GetFlags() & FL_NPC || tr.m_pEnt->GetMoveType() == MOVETYPE_PUSH) && tr.m_pEnt->GetHealth() > 0))
+				{
+					EmitSound("TripmineGrenade.Place");
+					IPhysicsObject* pPhysicsObject = VPhysicsGetObject();
+
+					if (pPhysicsObject) {
+						VPhysicsDestroyObject();
+						SetMoveType(MOVETYPE_NONE);
+						SetSolid(SOLID_NONE);
+						SetCollisionGroup(COLLISION_GROUP_DEBRIS);
+						SetParent(tr.m_pEnt);
+					}
+
+					m_stuck = true;
+				}
 			}
 
 		}
@@ -377,20 +388,46 @@ void CGrenadeFrag::StickTouch(CBaseEntity* pOther)
 	{
 		SetTouch(NULL);
 		EmitSound("TripmineGrenade.Place");
-		SetParent(pOther);
+		IPhysicsObject* pPhysicsObject = VPhysicsGetObject();
+
+		if (pPhysicsObject) {
+			VPhysicsDestroyObject();
+		}
+		SetMoveType(MOVETYPE_NONE);
+		SetSolid(SOLID_NONE);
 		SetCollisionGroup(COLLISION_GROUP_DEBRIS);
-		
+		SetParent(pOther);
 	}
 }
 
 void CGrenadeFrag::DelayThink() 
 {
 	// DR: deattach if parent died.
+	// TODO: Move from player to basecombatcharacter
 	if (CBaseEntity* ptr = this->GetMoveParent()) {
 		if (ptr->GetHealth()<=0) {
 			SetParent(NULL);
-			SetMoveType(MOVETYPE_VPHYSICS);
-			SetSolid(SOLID_VPHYSICS);
+			IPhysicsObject* pPhysObj = VPhysicsGetObject();
+
+			if (pPhysObj == NULL)
+			{
+				SetMoveType(MOVETYPE_VPHYSICS);
+				SetSolid(SOLID_VPHYSICS);
+				SetCollisionGroup(COLLISION_GROUP_WEAPON);
+
+
+				CreateVPhysics();
+				pPhysObj = VPhysicsGetObject();
+				if (pPhysObj) {
+					pPhysObj->Wake();
+					pPhysObj->ApplyForceCenter(Vector(0, 0, -32));
+					pPhysObj->RecheckCollisionFilter();
+				}
+			}
+
+			
+
+
 		}
 	}
 

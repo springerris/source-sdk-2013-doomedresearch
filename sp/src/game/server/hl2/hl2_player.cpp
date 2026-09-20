@@ -1038,19 +1038,15 @@ void CHL2_Player::PreThink(void)
 	bool resetMaxO = false;
 	if (curVel.Length2D() >= m_vecMaxHor.Length2D()) {
 		m_vecMaxHor = curVel;
-	}
-	else if (curVel.Length2D() == m_vecMaxHor.Length2D()) { resetMaxH = true; }
+	} else if (m_velBuffer[0].Length2D() == m_vecMaxHor.Length2D()) { resetMaxH = true; }
 
 	if (abs(curVel.z) >= abs(m_vecMaxVer.z)) {
 		m_vecMaxVer = curVel;
-		
-	} else if (abs(curVel.z) == abs(m_vecMaxVer.z)) { resetMaxV = true; }
+	} else if (abs(m_velBuffer[0].z) == abs(m_vecMaxVer.z)) { resetMaxV = true; }
 	
 	if (curVel.Length() >= m_vecMaxOverall.Length()) {
 		m_vecMaxOverall = curVel;
-
-	}
-	else if (curVel.Length() == m_vecMaxOverall.Length()) { resetMaxO = true; }
+	} else if (m_velBuffer[0].Length() == m_vecMaxOverall.Length()) { resetMaxO = true; }
 	
 	memmove(m_velBuffer, &m_velBuffer[1], (VELBUFFER_LENGTH - 1) * sizeof(Vector));
 	m_velBuffer[VELBUFFER_LENGTH - 1] = curVel;
@@ -3779,6 +3775,13 @@ int CHL2_Player::GiveAmmo( int nCount, int nAmmoIndex, bool bSuppressSound)
 bool CHL2_Player::Weapon_CanUse( CBaseCombatWeapon *pWeapon )
 {
 #ifndef HL2MP	
+
+	if (pWeapon->ClassMatches("weapon_plasmagun") || pWeapon->ClassMatches("weapon_plasmaspewer")) {
+		if (ApplyBattery(0.5))
+			UTIL_Remove(pWeapon);
+		return false;
+	}
+
 #ifdef MAPBASE
 	if ( pWeapon->ClassMatches( "weapon_stunstick" ) )
 	{
