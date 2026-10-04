@@ -1189,15 +1189,16 @@ void CPlayerPickupController::Use( CBaseEntity *pActivator, CBaseEntity *pCaller
 
 		// UNDONE: Use vphysics stress to decide to drop objects
 		// UNDONE: Must fix case of forcing objects into the ground you're standing on (causes stress) before that will work
-		if ( !pAttached || useType == USE_OFF || (m_pPlayer->m_nButtons & IN_ATTACK2) || m_grabController.ComputeError() > 12 )
+		
+		if ( !pAttached || useType == USE_OFF || (m_pPlayer->m_nButtons & IN_ATTACK2) || m_grabController.ComputeError() > 12)
 		{
 			Shutdown();
 			return;
 		}
 		
-		//Adrian: Oops, our object became motion disabled, let go!
+		//Adrian: Oops, our object became motion disabled, let go! // DR: parented physics objects can be +used, which will crash since there is no vphysics object later down the line!!
 		IPhysicsObject *pPhys = pAttached->VPhysicsGetObject();
-		if ( pPhys && pPhys->IsMoveable() == false )
+		if ( pPhys && pPhys->IsMoveable() == false || !pPhys)
 		{
 			Shutdown();
 			return;

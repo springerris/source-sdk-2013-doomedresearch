@@ -3293,7 +3293,7 @@ void CBlackHeadcrab::TouchDamage( CBaseEntity *pOther )
 	{
 		CTakeDamageInfo info;
 		if ( CalcDamageInfo( &info ) >= pOther->m_iHealth )
-			info.SetDamage( pOther->m_iHealth - 1 );
+			info.SetDamage( pOther->m_iHealth * 0.1 );
 
 		pOther->TakeDamage( info  );
 
@@ -3302,21 +3302,28 @@ void CBlackHeadcrab::TouchDamage( CBaseEntity *pOther )
 			// Episodic change to avoid NPCs dying too quickly from poison bites
 			if ( hl2_episodic.GetBool() )
 			{
+				CBaseCombatCharacter* pBCC = ToBaseCombatCharacter(pOther);
 				if ( pOther->IsPlayer() )
 				{
 					// That didn't finish them. Take them down to one point with poison damage. It'll heal.
-					pOther->TakeDamage( CTakeDamageInfo( this, this, pOther->m_iHealth - 1, DMG_POISON ) );
+					pOther->TakeDamage( CTakeDamageInfo( this, this, pOther->m_iHealth * 0.1, DMG_POISON ) );
+					if (pBCC) {
+						pBCC->AddStatusEffect(ST_POISON, 66, this);
+					}
 				}
 				else
 				{
 					// Just take some amount of slash damage instead
 					pOther->TakeDamage( CTakeDamageInfo( this, this, sk_headcrab_poison_npc_damage.GetFloat(), DMG_SLASH ) );
+					if (pBCC) {
+						pBCC->AddStatusEffect(ST_POISON, 66, this);
+					}
 				}
 			}
 			else
 			{
 				// That didn't finish them. Take them down to one point with poison damage. It'll heal.
-				pOther->TakeDamage( CTakeDamageInfo( this, this, pOther->m_iHealth - 1, DMG_POISON ) );
+				pOther->TakeDamage( CTakeDamageInfo( this, this, pOther->m_iHealth * 0.1, DMG_POISON ) );
 			}
 		}
 	}

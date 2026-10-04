@@ -71,9 +71,9 @@ void C_TELargeFunnel::CreateFunnel( void )
 	PMaterialHandle hMaterial = pSimple->GetPMaterial( "sprites/flare6" );
 #endif
 
-	for ( i = -256 ; i <= 256 ; i += 24 )	//24 from 32.. little more dense
+	for ( i = -256 ; i <= 256 ; i += 64 )	//24 from 32.. little more dense DR: to 64! 24 was too dense..
 	{
-		for ( j = -256 ; j <= 256 ; j += 24 )
+		for ( j = -256 ; j <= 256 ; j += 64 )
 		{
 			pParticle = (SimpleParticle *) pSimple->AddParticle( sizeof( SimpleParticle ), hMaterial, m_vecOrigin );			
 			if( pParticle )
