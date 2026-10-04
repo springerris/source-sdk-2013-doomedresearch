@@ -6567,7 +6567,11 @@ void CNPC_Hunter::GetShootDir( Vector &vecDir, const Vector &vecSrc, CBaseEntity
 	else if (pTargetEntity->IsPlayer()) {
 		
 		vecBodyTarget = pTargetEntity->BodyTarget(vecSrc);
+#ifdef DEBUG
 		DebugDrawLine(vecSrc, vecBodyTarget, 255, 255, 59, false, 5);
+#endif // DEBUG
+
+		
 	}
 	else
 	{
