@@ -44,8 +44,10 @@ public:
 
 	CWeaponPistol(void);
 
-	DECLARE_SERVERCLASS();
 
+
+	DECLARE_SERVERCLASS();
+	bool	Holster( CBaseCombatWeapon* pSwitchingTo );
 	void	Precache( void );
 	void	ItemPostFrame( void );
 	void	ItemPreFrame( void );
@@ -315,6 +317,15 @@ CWeaponPistol::CWeaponPistol( void )
 	m_fMaxRange2		= 200;
 
 	m_bFiresUnderwater	= true;
+}
+
+bool CWeaponPistol::Holster( CBaseCombatWeapon* pSwitchingTo )
+{
+	bool shouldClear = BaseClass::Holster(pSwitchingTo);
+	if (shouldClear) {
+		m_iRemainingBurst = 0;
+	}
+	return shouldClear;
 }
 
 //-----------------------------------------------------------------------------

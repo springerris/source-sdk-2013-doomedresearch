@@ -361,6 +361,8 @@ void CWeaponAR2::DelayedAttack( void )
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
+
+
 void CWeaponAR2::SecondaryAttack( void )
 {
 	if ( m_bShotDelayed )
@@ -422,16 +424,13 @@ bool CWeaponAR2::Reload( void )
 //-----------------------------------------------------------------------------
 float CWeaponAR2::GetFireRate(void)
 {	
-	int reachMax = 12;
-	float startRate = 2;
-	float maxRate = (startRate - sqrt(1.1 * reachMax * 0.1)) / 10;
-	float fireRate = 0.0;
-	if (m_nShotsFired > reachMax) {
-		fireRate = maxRate;
-	}
-	else {
-		fireRate = (startRate - sqrt(1.1 * m_nShotsFired * 0.1)) / 10;
-	}
+	float mul = 0 * m_nShotsFired * m_nShotsFired * m_nShotsFired + 0.005 * m_nShotsFired * m_nShotsFired - 0.005 * m_nShotsFired;
+	if (mul >= AR2_MAXMUL) mul = AR2_MAXMUL;
+	float fireRate = AR2_BASERATE - mul * AR2_BASERATE;
+#ifdef DEBUG
+	DevMsg("AR2 baserate %f firerate %f multiplier %f\n", AR2_BASERATE, fireRate, mul);
+#endif // DEBUG
+
 	return fireRate;
 }
 

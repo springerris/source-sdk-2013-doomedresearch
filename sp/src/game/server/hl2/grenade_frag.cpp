@@ -276,7 +276,7 @@ void CGrenadeFrag::VPhysicsUpdate( IPhysicsObject *pPhysics )
 #if 0
 	UTIL_TraceHull( start, start + vel * gpGlobals->frametime, CollisionProp()->OBBMins(), CollisionProp()->OBBMaxs(), CONTENTS_HITBOX|CONTENTS_MONSTER|CONTENTS_SOLID, &filter, &tr );
 #else
-	UTIL_TraceLine( start, start + vel * gpGlobals->frametime * 1.25, CONTENTS_HITBOX|CONTENTS_MONSTER|CONTENTS_SOLID, &filter, &tr );
+	UTIL_TraceLine( start, start + vel * gpGlobals->frametime * 2.25, CONTENTS_HITBOX|CONTENTS_MONSTER|CONTENTS_SOLID, &filter, &tr );
 #endif
 	if ( tr.startsolid )
 	{
@@ -311,11 +311,12 @@ void CGrenadeFrag::VPhysicsUpdate( IPhysicsObject *pPhysics )
 				{
 					EmitSound("TripmineGrenade.Place");
 					IPhysicsObject* pPhysicsObject = VPhysicsGetObject();
-
+					SetAbsOrigin(tr.endpos);
 					if (pPhysicsObject) {
 						VPhysicsDestroyObject();
 						SetMoveType(MOVETYPE_NONE);
-						SetSolid(SOLID_NONE);
+						SetSolid(SOLID_BBOX);
+						UTIL_SetSize(this, -Vector(4, 4, 4), Vector(4, 4, 4));
 						SetCollisionGroup(COLLISION_GROUP_DEBRIS);
 						SetParent(tr.m_pEnt);
 					}
@@ -394,7 +395,8 @@ void CGrenadeFrag::StickTouch(CBaseEntity* pOther)
 			VPhysicsDestroyObject();
 		}
 		SetMoveType(MOVETYPE_NONE);
-		SetSolid(SOLID_NONE);
+		SetSolid(SOLID_BBOX);
+		UTIL_SetSize(this, -Vector(4, 4, 4), Vector(4, 4, 4));
 		SetCollisionGroup(COLLISION_GROUP_DEBRIS);
 		SetParent(pOther);
 	}

@@ -17,6 +17,10 @@
 #include "basegrenade_shared.h"
 #include "basehlcombatweapon.h"
 
+#define AR2_SHOTSUNTIL 10
+#define AR2_BASERATE 0.125f
+#define AR2_MAXMUL 0.4f
+
 class CWeaponAR2 : public CHLMachineGun
 {
 public:
@@ -56,10 +60,11 @@ public:
 
 	virtual const Vector& GetBulletSpread( void )
 	{
-		static Vector cone;
+		static Vector cone = VECTOR_CONE_1DEGREES;
+		if (m_nShotsFired < AR2_SHOTSUNTIL) cone = VECTOR_CONE_1DEGREES;
+		else if (m_nShotsFired < AR2_SHOTSUNTIL * 2) cone = VECTOR_CONE_1DEGREES * m_nShotsFired * 0.15;
+		else cone = VECTOR_CONE_1DEGREES * AR2_SHOTSUNTIL * 0.3;
 		
-		cone = VECTOR_CONE_3DEGREES;
-
 		return cone;
 	}
 

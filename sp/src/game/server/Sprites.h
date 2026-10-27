@@ -21,3 +21,13 @@ public:
 	static CBulletSprite* SpriteTrailCreate(const char* pSpriteName, const Vector& origin, bool animate);
 	void BallTouch(CBaseEntity* pOther);
 };
+
+class CSlugSprite : public CSprite
+{
+	DECLARE_CLASS(CPlasmaSprite, CSprite);
+	DECLARE_DATADESC();
+public:
+	void Precache(void);
+	static CSlugSprite* SpriteCreate(const char* pSpriteName, const Vector& origin, bool animate);
+	void BallTouch(CBaseEntity* pOther);
+};

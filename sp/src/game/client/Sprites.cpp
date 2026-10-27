@@ -4,9 +4,10 @@
 
 #include "engine/ivdebugoverlay.h"
 #include "tier0/memdbgon.h"
+#include <explode.h>
 
 #define PLASMASPARK "Weapon_StunStick.Activate"
-
+#define SOFTIMPACT "Sand.BulletImpact"
 
 BEGIN_DATADESC(CPlasmaSprite)
 	DEFINE_ENTITYFUNC(BallTouch)
@@ -174,4 +175,71 @@ void CBulletSprite::BallTouch(CBaseEntity* pOther)
 		SetAbsVelocity(vec3_origin);
 		DieIn(0.25);
 	}
+}
+
+BEGIN_DATADESC(CSlugSprite)
+DEFINE_ENTITYFUNC(BallTouch)
+END_DATADESC()
+
+LINK_ENTITY_TO_CLASS(env_slug_sprite, CSlugSprite);
+
+//ConVar* sk_npc_dmg_ar2 = cvar->FindVar("sk_npc_dmg_ar2 ");
+
+void CSlugSprite::Precache() {
+	PrecacheScriptSound(SOFTIMPACT);
+	BaseClass::Precache();
+}
+
+CSlugSprite* CSlugSprite::SpriteCreate(const char* pSpriteName, const Vector& origin, bool animate)
+{
+	CSlugSprite* pSprite = CREATE_ENTITY(CSlugSprite, "env_slug_sprite");
+	pSprite->SpriteInit(pSpriteName, origin);
+	pSprite->SetSolid(SOLID_BBOX);
+	pSprite->AddSolidFlags(FSOLID_NOT_SOLID | FSOLID_TRIGGER);
+	pSprite->SetTouch(&CSlugSprite::BallTouch);
+	UTIL_SetSize(pSprite, vec3_origin, vec3_origin);
+	pSprite->SetMoveType(MOVETYPE_FLY);
+	pSprite->SetCollisionGroup(COLLISION_GROUP_PROJECTILE);
+
+	if (animate)
+		pSprite->TurnOn();
+	//pSprite->AnimateForTime(10, MAX_COORD_FLOAT);
+	return pSprite;
+}
+
+void CSlugSprite::BallTouch(CBaseEntity* pOther)
+{
+	if (pOther->IsSolidFlagSet(FSOLID_VOLUME_CONTENTS | FSOLID_TRIGGER))
+	{
+		// Some NPCs are triggers that can take damage (like antlion grubs). We should hit them.
+#ifdef MAPBASE
+		// But some physics objects that are also triggers (like weapons) shouldn't go through this check.
+		// 
+		// Note: rpg_missile has the same code, except it properly accounts for weapons in a different way.
+		// This was discovered after I implemented this and both work fine, but if this ever causes problems,
+		// use rpg_missile's implementation:
+		// 
+		// if ( pOther->IsSolidFlagSet(FSOLID_TRIGGER|FSOLID_VOLUME_CONTENTS) && pOther->GetCollisionGroup() != COLLISION_GROUP_WEAPON )
+		// 
+		if (pOther->GetMoveType() == MOVETYPE_NONE && ((pOther->m_takedamage == DAMAGE_NO) || (pOther->m_takedamage == DAMAGE_EVENTS_ONLY)))
+#else
+		if ((pOther->m_takedamage == DAMAGE_NO) || (pOther->m_takedamage == DAMAGE_EVENTS_ONLY))
+#endif
+			return;
+	}
+
+	
+	if (pOther->m_takedamage)
+	{
+
+		if (pOther == GetOwnerEntity()) { return; }
+		if (pOther->GetOwnerEntity() == GetOwnerEntity()) { return; }
+	}
+	
+	EmitSound(SOFTIMPACT);
+	ExplosionCreate(GetAbsOrigin(), GetAbsAngles(), this, 40.0f, 50.0f,
+		SF_ENVEXPLOSION_NODLIGHTS | SF_ENVEXPLOSION_NOSOUND | SF_ENVEXPLOSION_NOFIREBALL, 1300.0f);
+
+
+	DieIn(0);
 }

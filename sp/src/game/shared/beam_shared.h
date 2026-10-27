@@ -147,6 +147,9 @@ public:
 	void		LaserInit( CBaseEntity *pStartEntity, CBaseEntity *pEndEntity );
 	void		HoseInit( const Vector &start, const Vector &direction );
 	void		SplineInit( int nNumEnts, CBaseEntity** pEntList, int *attachment  );
+	// DR: fade away think and fade away method
+	void		FadeThink( void );
+	void		FadeAwayIn( float t );
 
 	// Input handlers
 
@@ -199,6 +202,8 @@ protected:
 	CNetworkVar( float, m_flHDRColorScale );
 	float		m_flFireTime;
 	float		m_flDamage;			// Damage per second to touchers.
+	float		m_flFadeAwayTime;
+	float		m_flFadeStartTime;
 	// DR: beam length goes here
 	float		m_flLength;			// 
 	CNetworkVar( int, m_nNumBeamEnts );

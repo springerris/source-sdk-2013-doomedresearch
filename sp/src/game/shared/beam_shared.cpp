@@ -154,106 +154,110 @@ LINK_ENTITY_TO_CLASS( beam, CBeam );
 IMPLEMENT_NETWORKCLASS_ALIASED( Beam, DT_Beam )
 
 #if !defined( NO_ENTITY_PREDICTION )
-BEGIN_NETWORK_TABLE_NOBASE( CBeam, DT_BeamPredictableId )
+BEGIN_NETWORK_TABLE_NOBASE(CBeam, DT_BeamPredictableId)
 #if !defined( CLIENT_DLL )
-	SendPropPredictableId( SENDINFO( m_PredictableID ) ),
-	SendPropInt( SENDINFO( m_bIsPlayerSimulated ), 1, SPROP_UNSIGNED ),
+SendPropPredictableId(SENDINFO(m_PredictableID)),
+SendPropInt(SENDINFO(m_bIsPlayerSimulated), 1, SPROP_UNSIGNED),
 #else
-	RecvPropPredictableId( RECVINFO( m_PredictableID ) ),
-	RecvPropInt( RECVINFO( m_bIsPlayerSimulated ) ),
+RecvPropPredictableId(RECVINFO(m_PredictableID)),
+RecvPropInt(RECVINFO(m_bIsPlayerSimulated)),
 #endif
 END_NETWORK_TABLE()
 #endif
 
-BEGIN_NETWORK_TABLE_NOBASE( CBeam, DT_Beam )
+BEGIN_NETWORK_TABLE_NOBASE(CBeam, DT_Beam)
 #if !defined( CLIENT_DLL )
-	SendPropInt		(SENDINFO(m_nBeamType),		Q_log2(NUM_BEAM_TYPES)+1,	SPROP_UNSIGNED ),
-	SendPropInt		(SENDINFO(m_nBeamFlags),	NUM_BEAM_FLAGS,	SPROP_UNSIGNED ),
-	SendPropInt		(SENDINFO(m_nNumBeamEnts ),			5,	SPROP_UNSIGNED ),
-	SendPropArray3
-	(
-		SENDINFO_ARRAY3(m_hAttachEntity), 
-		SendPropEHandle( SENDINFO_ARRAY(m_hAttachEntity) )
-	),
-	SendPropArray3
-	(
-		SENDINFO_ARRAY3(m_nAttachIndex), 
-		SendPropInt( SENDINFO_ARRAY(m_nAttachIndex), ATTACHMENT_INDEX_BITS, SPROP_UNSIGNED)
-	),
-	SendPropInt		(SENDINFO(m_nHaloIndex),	16, SPROP_UNSIGNED ),
-	SendPropFloat	(SENDINFO(m_fHaloScale),	0,	SPROP_NOSCALE ),
-	SendPropFloat	(SENDINFO(m_fWidth),		10,	SPROP_ROUNDUP,	0.0f, MAX_BEAM_WIDTH ),
-	SendPropFloat	(SENDINFO(m_fEndWidth),		10,	SPROP_ROUNDUP,	0.0f, MAX_BEAM_WIDTH ),
-	SendPropFloat	(SENDINFO(m_fFadeLength),	0,	SPROP_NOSCALE ),
-	SendPropFloat	(SENDINFO(m_fAmplitude),	8,	SPROP_ROUNDDOWN,	0.0f, MAX_BEAM_NOISEAMPLITUDE ),
-	SendPropFloat	(SENDINFO(m_fStartFrame),	8,	SPROP_ROUNDDOWN,	0.0f,   256.0f),
-	SendPropFloat	(SENDINFO(m_fSpeed),		8,	SPROP_NOSCALE,	0.0f,	MAX_BEAM_SCROLLSPEED),
-	SendPropInt		(SENDINFO(m_nRenderFX),		8,	SPROP_UNSIGNED ),
-	SendPropInt		(SENDINFO(m_nRenderMode),	8,	SPROP_UNSIGNED ),
-	SendPropFloat	(SENDINFO(m_flFrameRate),	10, SPROP_ROUNDUP, -25.0f, 25.0f ),
-	SendPropFloat	(SENDINFO(m_flHDRColorScale),	0, SPROP_NOSCALE, 0.0f, 100.0f ),
-	SendPropFloat	(SENDINFO(m_flFrame),		20, SPROP_ROUNDDOWN | SPROP_CHANGES_OFTEN,	0.0f,   256.0f),
-	SendPropInt		(SENDINFO(m_clrRender),		32,	SPROP_UNSIGNED | SPROP_CHANGES_OFTEN ),
-	SendPropVector	(SENDINFO(m_vecEndPos),		-1,	SPROP_COORD ),
+SendPropInt(SENDINFO(m_nBeamType), Q_log2(NUM_BEAM_TYPES) + 1, SPROP_UNSIGNED),
+SendPropInt(SENDINFO(m_nBeamFlags), NUM_BEAM_FLAGS, SPROP_UNSIGNED),
+SendPropInt(SENDINFO(m_nNumBeamEnts), 5, SPROP_UNSIGNED),
+SendPropArray3
+(
+	SENDINFO_ARRAY3(m_hAttachEntity),
+	SendPropEHandle(SENDINFO_ARRAY(m_hAttachEntity))
+),
+SendPropArray3
+(
+	SENDINFO_ARRAY3(m_nAttachIndex),
+	SendPropInt(SENDINFO_ARRAY(m_nAttachIndex), ATTACHMENT_INDEX_BITS, SPROP_UNSIGNED)
+),
+SendPropInt(SENDINFO(m_nHaloIndex), 16, SPROP_UNSIGNED),
+SendPropFloat(SENDINFO(m_fHaloScale), 0, SPROP_NOSCALE),
+SendPropFloat(SENDINFO(m_fWidth), 10, SPROP_ROUNDUP, 0.0f, MAX_BEAM_WIDTH),
+SendPropFloat(SENDINFO(m_fEndWidth), 10, SPROP_ROUNDUP, 0.0f, MAX_BEAM_WIDTH),
+SendPropFloat(SENDINFO(m_fFadeLength), 0, SPROP_NOSCALE),
+SendPropFloat(SENDINFO(m_fAmplitude), 8, SPROP_ROUNDDOWN, 0.0f, MAX_BEAM_NOISEAMPLITUDE),
+SendPropFloat(SENDINFO(m_fStartFrame), 8, SPROP_ROUNDDOWN, 0.0f, 256.0f),
+SendPropFloat(SENDINFO(m_fSpeed), 8, SPROP_NOSCALE, 0.0f, MAX_BEAM_SCROLLSPEED),
+SendPropInt(SENDINFO(m_nRenderFX), 8, SPROP_UNSIGNED),
+SendPropInt(SENDINFO(m_nRenderMode), 8, SPROP_UNSIGNED),
+SendPropFloat(SENDINFO(m_flFrameRate), 10, SPROP_ROUNDUP, -25.0f, 25.0f),
+SendPropFloat(SENDINFO(m_flHDRColorScale), 0, SPROP_NOSCALE, 0.0f, 100.0f),
+SendPropFloat(SENDINFO(m_flFrame), 20, SPROP_ROUNDDOWN | SPROP_CHANGES_OFTEN, 0.0f, 256.0f),
+SendPropInt(SENDINFO(m_clrRender), 32, SPROP_UNSIGNED | SPROP_CHANGES_OFTEN),
+SendPropVector(SENDINFO(m_vecEndPos), -1, SPROP_COORD),
 #ifdef PORTAL
-	SendPropBool	(SENDINFO(m_bDrawInMainRender) ),
-	SendPropBool	(SENDINFO(m_bDrawInPortalRender) ),
+SendPropBool(SENDINFO(m_bDrawInMainRender)),
+SendPropBool(SENDINFO(m_bDrawInPortalRender)),
 #endif
-	SendPropModelIndex(SENDINFO(m_nModelIndex) ),
-	SendPropVector (SENDINFO(m_vecOrigin), 19, SPROP_CHANGES_OFTEN,	MIN_COORD_INTEGER, MAX_COORD_INTEGER),
-	SendPropEHandle(SENDINFO_NAME(m_hMoveParent, moveparent) ),
-	SendPropInt		(SENDINFO(m_nMinDXLevel),	8,	SPROP_UNSIGNED ),
+SendPropModelIndex(SENDINFO(m_nModelIndex)),
+SendPropVector(SENDINFO(m_vecOrigin), 19, SPROP_CHANGES_OFTEN, MIN_COORD_INTEGER, MAX_COORD_INTEGER),
+SendPropEHandle(SENDINFO_NAME(m_hMoveParent, moveparent)),
+SendPropInt(SENDINFO(m_nMinDXLevel), 8, SPROP_UNSIGNED),
 #if !defined( NO_ENTITY_PREDICTION )
-	SendPropDataTable( "beampredictable_id", 0, &REFERENCE_SEND_TABLE( DT_BeamPredictableId ), SendProxy_SendPredictableId ),
+SendPropDataTable("beampredictable_id", 0, &REFERENCE_SEND_TABLE(DT_BeamPredictableId), SendProxy_SendPredictableId),
 #endif
 
 #else
-	RecvPropInt		(RECVINFO(m_nBeamType)),
-	RecvPropInt		(RECVINFO(m_nBeamFlags)),
-	RecvPropInt		(RECVINFO(m_nNumBeamEnts)),
-	RecvPropArray3
-	(
-		RECVINFO_ARRAY( m_hAttachEntity ),
-		RecvPropEHandle (RECVINFO(m_hAttachEntity[0]))
-	),
-	RecvPropArray3	
-	(
-		RECVINFO_ARRAY( m_nAttachIndex ),
-		RecvPropInt (RECVINFO(m_nAttachIndex[0]))
-	),
-	RecvPropInt		(RECVINFO(m_nHaloIndex)),
-	RecvPropFloat	(RECVINFO(m_fHaloScale)),
-	RecvPropFloat	(RECVINFO(m_fWidth)),
-	RecvPropFloat	(RECVINFO(m_fEndWidth)),
-	RecvPropFloat	(RECVINFO(m_fFadeLength)),
-	RecvPropFloat	(RECVINFO(m_fAmplitude)),
-	RecvPropFloat	(RECVINFO(m_fStartFrame)),
-	RecvPropFloat	(RECVINFO(m_fSpeed), 0, RecvProxy_Beam_ScrollSpeed ),
-	RecvPropFloat(RECVINFO(m_flFrameRate)),
-	RecvPropFloat(RECVINFO(m_flHDRColorScale)),
-	RecvPropInt(RECVINFO(m_clrRender)),
-	RecvPropInt(RECVINFO(m_nRenderFX)),
-	RecvPropInt(RECVINFO(m_nRenderMode)),
-	RecvPropFloat(RECVINFO(m_flFrame)),
-	RecvPropVector(RECVINFO(m_vecEndPos)),
+RecvPropInt(RECVINFO(m_nBeamType)),
+RecvPropInt(RECVINFO(m_nBeamFlags)),
+RecvPropInt(RECVINFO(m_nNumBeamEnts)),
+RecvPropArray3
+(
+	RECVINFO_ARRAY(m_hAttachEntity),
+	RecvPropEHandle(RECVINFO(m_hAttachEntity[0]))
+),
+RecvPropArray3
+(
+	RECVINFO_ARRAY(m_nAttachIndex),
+	RecvPropInt(RECVINFO(m_nAttachIndex[0]))
+),
+RecvPropInt(RECVINFO(m_nHaloIndex)),
+RecvPropFloat(RECVINFO(m_fHaloScale)),
+RecvPropFloat(RECVINFO(m_fWidth)),
+RecvPropFloat(RECVINFO(m_fEndWidth)),
+RecvPropFloat(RECVINFO(m_fFadeLength)),
+RecvPropFloat(RECVINFO(m_fAmplitude)),
+RecvPropFloat(RECVINFO(m_fStartFrame)),
+RecvPropFloat(RECVINFO(m_fSpeed), 0, RecvProxy_Beam_ScrollSpeed),
+RecvPropFloat(RECVINFO(m_flFrameRate)),
+RecvPropFloat(RECVINFO(m_flHDRColorScale)),
+RecvPropInt(RECVINFO(m_clrRender)),
+RecvPropInt(RECVINFO(m_nRenderFX)),
+RecvPropInt(RECVINFO(m_nRenderMode)),
+RecvPropFloat(RECVINFO(m_flFrame)),
+RecvPropVector(RECVINFO(m_vecEndPos)),
 #ifdef PORTAL
-	RecvPropBool(RECVINFO(m_bDrawInMainRender) ),
-	RecvPropBool(RECVINFO(m_bDrawInPortalRender) ),
+RecvPropBool(RECVINFO(m_bDrawInMainRender)),
+RecvPropBool(RECVINFO(m_bDrawInPortalRender)),
 #endif
-	RecvPropInt(RECVINFO(m_nModelIndex)),
-	RecvPropInt(RECVINFO(m_nMinDXLevel)),
+RecvPropInt(RECVINFO(m_nModelIndex)),
+RecvPropInt(RECVINFO(m_nMinDXLevel)),
 
-	RecvPropVector(RECVINFO_NAME(m_vecNetworkOrigin, m_vecOrigin)),
-	RecvPropInt( RECVINFO_NAME(m_hNetworkMoveParent, moveparent), 0, RecvProxy_IntToMoveParent ),
+RecvPropVector(RECVINFO_NAME(m_vecNetworkOrigin, m_vecOrigin)),
+RecvPropInt(RECVINFO_NAME(m_hNetworkMoveParent, moveparent), 0, RecvProxy_IntToMoveParent),
 #if !defined( NO_ENTITY_PREDICTION )
-	RecvPropDataTable( "beampredictable_id", 0, 0, &REFERENCE_RECV_TABLE( DT_BeamPredictableId ) ),
+RecvPropDataTable("beampredictable_id", 0, 0, &REFERENCE_RECV_TABLE(DT_BeamPredictableId)),
 #endif
 
 #endif
 END_NETWORK_TABLE()
 
 #if !defined( CLIENT_DLL )
-BEGIN_DATADESC( CBeam )
+BEGIN_DATADESC(CBeam)
+	DEFINE_THINKFUNC(FadeThink),
+	DEFINE_FIELD( m_flFadeAwayTime, FIELD_TIME ),
+	DEFINE_FIELD(m_flFadeAwayTime, FIELD_TIME),
+
 	DEFINE_FIELD( m_nHaloIndex, FIELD_MODELINDEX ),
 	DEFINE_FIELD( m_nBeamType, FIELD_INTEGER ),
 	DEFINE_FIELD( m_nBeamFlags, FIELD_INTEGER ),
@@ -713,7 +717,29 @@ void CBeam::SplineInit( int nNumEnts, CBaseEntity** pEntList, int *attachment )
 	m_nNumBeamEnts = nNumEnts;
 	RelinkBeam();
 }
+#if !defined( CLIENT_DLL )
+void CBeam::FadeThink(void)
+{
+	if (gpGlobals->curtime < m_flFadeAwayTime) {
+		byte colorPer = GetRenderColor().a * ((gpGlobals->curtime - m_flFadeStartTime) / (m_flFadeAwayTime - m_flFadeStartTime));
+		SetRenderColorA(GetRenderColor().a - colorPer);
+		SetNextThink(gpGlobals->curtime);
+	}
+	else
+	{
+		UTIL_Remove(this);
+	}
+	
+}
 
+void CBeam::FadeAwayIn(float t)
+{
+	m_flFadeStartTime = gpGlobals->curtime;
+	m_flFadeAwayTime = gpGlobals->curtime + t;
+	SetThink(&CBeam::FadeThink);
+	SetNextThink(gpGlobals->curtime);
+}
+#endif
 
 void CBeam::RelinkBeam( void )
 {

@@ -1932,9 +1932,9 @@ bool CWeaponRPG::Deploy( void )
 //-----------------------------------------------------------------------------
 bool CWeaponRPG::Holster( CBaseCombatWeapon *pSwitchingTo )
 {
-	//Can't have an active missile out
-	if ( m_hMissile != NULL )
-		return false;
+	//Can't have an active missile out <-- WRONG, ACTUALLY YOU CAN
+	//if ( m_hMissile != NULL ) {}
+		//return false;
 
 	StopGuiding();
 	return BaseClass::Holster( pSwitchingTo );
@@ -2106,8 +2106,9 @@ bool CWeaponRPG::Reload( void )
 		return false;
 
 	WeaponSound( RELOAD );
-	
-	SendWeaponAnim( ACT_VM_RELOAD );
+	if (CBasePlayer* pPlayer = dynamic_cast<CBasePlayer*>(pOwner)) {
+		if  (pPlayer->GetActiveWeapon() == this) 		SendWeaponAnim(ACT_VM_RELOAD);
+	}
 
 	return true;
 }

@@ -19,9 +19,14 @@
 #include "engine/IEngineSound.h"
 #include "te_effect_dispatch.h"
 #include "gamestats.h"
-
+#include "eventqueue.h"
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+#include <beam_shared.h>
+#include <explode.h>
+#include <hl2_player.h>
+#include <grenade_ar2.h>
+#include <props.h>
 
 //-----------------------------------------------------------------------------
 // CWeapon357
@@ -32,17 +37,26 @@ extern acttable_t *GetPistolActtable();
 extern int GetPistolActtableCount();
 #endif
 
+#define REVOLVER_ALT_COST 20
+#define REVOLVER_ALT_LASER "sprites/yellowlaser1.vmt"
+#define REVOLVER_ALT_SWEEP 8.0
+#define RATIO_APPROX 1.4375 // ratio between the radius of a circle that contains a square and the inscribed circle's 
+#define PARTICLENUKE "explosion_huge_h"
+
 class CWeapon357 : public CBaseHLCombatWeapon
 {
 	DECLARE_CLASS( CWeapon357, CBaseHLCombatWeapon );
 public:
 
 	CWeapon357( void );
-
+	void	Precache(void);
 	void	PrimaryAttack( void );
 	void	SecondaryAttack( void );
+	void	TestEntityForDet(CBaseEntity* hitEnt, bool& firstTraceNPC, CBaseEntity* foundExplosive);
+	void	ExtraBoomAt(CBaseEntity* hitEnt);
 	void	Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatCharacter *pOperator );
-
+	bool	Deploy() override;
+	bool	Holster(CBaseCombatWeapon* pSwitchingTo);
 	float	WeaponAutoAimScale()	{ return 0.6f; }
 
 #ifdef MAPBASE
@@ -78,6 +92,9 @@ public:
 
 	virtual acttable_t		*GetBackupActivityList() { return GetPistolActtable(); }
 	virtual int				GetBackupActivityListCount() { return GetPistolActtableCount(); }
+
+	// DR: store alt fire remaining cd here
+	float m_flRemainingRecharge;
 #endif
 
 	DECLARE_SERVERCLASS();
@@ -244,6 +261,7 @@ int Get357ActtableCount()
 //-----------------------------------------------------------------------------
 CWeapon357::CWeapon357( void )
 {
+	m_flRemainingRecharge = 0.0;
 	m_bReloadsSingly	= false;
 	m_bFiresUnderwater	= false;
 
@@ -253,6 +271,13 @@ CWeapon357::CWeapon357( void )
 	m_fMinRange2		= 24;
 	m_fMaxRange2		= 200;
 #endif
+}
+
+void CWeapon357::Precache(void)
+{
+	PrecacheParticleSystem(PARTICLENUKE);
+	PrecacheModel(REVOLVER_ALT_LASER);
+	BaseClass::Precache();
 }
 
 //-----------------------------------------------------------------------------
@@ -299,6 +324,24 @@ void CWeapon357::Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatChara
 			break;
 #endif
 	}
+}
+
+bool CWeapon357::Deploy()
+{
+	bool deployed = BaseClass::Deploy();
+	m_flNextSecondaryAttack = m_flNextSecondaryAttack + m_flRemainingRecharge;
+	return deployed;
+
+}
+
+bool CWeapon357::Holster(CBaseCombatWeapon* pSwitchingTo)
+{
+	float charge  = m_flNextSecondaryAttack - gpGlobals->curtime;
+	bool shouldStore = BaseClass::Holster(pSwitchingTo);
+	if (shouldStore) {
+		m_flRemainingRecharge = charge;
+	}
+	return shouldStore;
 }
 
 #ifdef MAPBASE
@@ -381,15 +424,10 @@ void CWeapon357::PrimaryAttack( void )
 	pPlayer->SetMuzzleFlashTime( gpGlobals->curtime + 0.5 );
 
 	//Disorient the player
-	QAngle angles = pPlayer->GetLocalAngles();
 
-	angles.x += random->RandomInt( -1, 1 );
-	angles.y += random->RandomInt( -1, 1 );
-	angles.z = 0;
 
-	pPlayer->SnapEyeAngles( angles );
 
-	pPlayer->ViewPunch(QAngle(-4, random->RandomFloat(-1, 1), 0));
+	pPlayer->ViewPunch(QAngle(-3, 0, 0));
 
 	CSoundEnt::InsertSound( SOUND_COMBAT, GetAbsOrigin(), 600, 0.2, GetOwner() );
 
@@ -420,11 +458,160 @@ void CWeapon357::SecondaryAttack(void)
 		{
 			WeaponSound(EMPTY);
 			m_flNextPrimaryAttack = 0.15;
+			m_flNextSecondaryAttack = 0.15;
 		}
 
 		return;
 	}
 
+	if (CHL2_Player* plr = dynamic_cast<CHL2_Player*>(pPlayer)) {
+		float power = plr->SuitPower_GetCurrentPercentage();
+		if (power < REVOLVER_ALT_COST) {
+			WeaponSound(EMPTY);
+	
+			m_flNextSecondaryAttack = gpGlobals->curtime + 0.15;
+			return;
+		}
+		else
+		{
+			plr->SuitPower_Drain(REVOLVER_ALT_COST);
+		}
+	}
+
+	m_iSecondaryAttacks++;
+	Vector vecSrc = pPlayer->Weapon_ShootPosition();
+	Vector eyeR;
+	Vector eyeF;
+	pPlayer->EyeVectors(&eyeF, &eyeR, NULL);
+	Vector vecAiming = pPlayer->GetAutoaimVector(AUTOAIM_SCALE_DEFAULT);
+	trace_t laserTrace;
+	trace_t laserTrace2;
+	CBaseEntity* endEnt = CreateEntityByName("info_teleport_destination");
+	bool wasNPC = false;
+	Vector wasAt = vec3_origin;
+	UTIL_TraceHull(vecSrc + vecAiming * 32, vecSrc + vecAiming * MAX_TRACE_LENGTH, Vector(-1,-1,-1) * REVOLVER_ALT_SWEEP, Vector(1, 1, 1) * REVOLVER_ALT_SWEEP, (MASK_SHOT | CONTENTS_GRATE), NULL, COLLISION_GROUP_NONE, &laserTrace);
+	UTIL_TraceLine(vecSrc + vecAiming * 32, vecSrc + vecAiming * MAX_TRACE_LENGTH, (MASK_SHOT | CONTENTS_GRATE), NULL, COLLISION_GROUP_NONE, &laserTrace2);
+
+	if (laserTrace.DidHitNonWorldEntity()) {
+		CBaseEntity* traceHitEnt = laserTrace.m_pEnt;
+		wasNPC = traceHitEnt->IsNPC();
+		wasAt = traceHitEnt->GetAbsOrigin();
+	}
+	endEnt->SetAbsOrigin(laserTrace.endpos);
+	
+	CBaseAnimating* pBeamEnt = pPlayer->GetViewModel();
+	int iAttachment = pBeamEnt->LookupAttachment("muzzle");
+
+	Vector vOrigin;
+	QAngle vAngle;
+
+	pBeamEnt->GetAttachment(iAttachment, vOrigin, vAngle);
+	vOrigin.z = vOrigin.z + 64;
+	CBeam* pBeam = CBeam::BeamCreate(REVOLVER_ALT_LASER, 3);
+	//CSprite* pSprite = CSprite::SpriteCreate(REVOLVER_ALT_LASER, vOrigin, true);
+	//pSprite->SetScale(1);
+	pBeam->SetAbsOrigin(vecSrc + eyeR * 2 + eyeF * 16);
+	pBeam->EntsInit(pBeam, endEnt);
+
+	pBeam->SetColor(255, 255, 255);
+	pBeam->SetScrollRate(25);
+	pBeam->SetBrightness(128);
+	pBeam->LiveForTime(1.5);
+	pBeam->SetFadeLength(1.0);
+	
+	pBeam->FadeAwayIn(2.0);
+	variant_t variant;
+	g_EventQueue.AddEvent(endEnt, "Kill", variant, 2.05, pPlayer, pPlayer);
+	pPlayer->ViewPunch(QAngle(-20, random->RandomFloat(-1, 1), 0));
+	QAngle angles = pPlayer->GetLocalAngles();
+	angles.x = angles.x - 2;
+	pPlayer->SnapEyeAngles(angles);
+
+	
+	//FireBulletsInfo_t fBI = FireBulletsInfo_t(1, vecSrc, vecAiming, vec3_origin, MAX_TRACE_LENGTH, m_iPrimaryAmmoType, false);
+	//fBI.SetDamage(fBI.GetDamage() + 10);
+	//pPlayer->FireBullets(fBI);
+
+	if (wasNPC) {
+		CAI_BaseNPC* bNPCP = dynamic_cast<CAI_BaseNPC*>(laserTrace.m_pEnt);
+		CTakeDamageInfo info(this, this->GetOwnerEntity(), 50, DMG_ALWAYSGIB & DMG_BURN);
+		bNPCP->Ignite(5);
+		bNPCP->TakeDamage(info);
+	}
+	WeaponSound(SPECIAL1);
+	// DR: alright here we will VERY CAREFULLY check that the entity is AN NPC and is DEAD or DYING or doesn't exist ANYMORE
+	bool firstTraceNPC = false;
+	CBaseEntity* foundExplosive = NULL;
+	if (laserTrace.DidHitNonWorldEntity()) {
+		
+
+		CBaseEntity* hitEnt = laserTrace.m_pEnt;
+		
+		if (hitEnt) 
+			TestEntityForDet(hitEnt, firstTraceNPC, foundExplosive);
+			if (!foundExplosive) {
+				// try to explode attached grenade if we hit near it
+				foundExplosive = gEntList.FindEntityByClassnameNearest("npc_grenade_frag", laserTrace.endpos, REVOLVER_ALT_SWEEP*RATIO_APPROX);
+				if (foundExplosive) {
+					if (CBaseGrenade* cBGp = dynamic_cast<CBaseGrenade*>(foundExplosive)) {
+						foundExplosive = hitEnt;
+						ExtraBoomAt(hitEnt);
+						cBGp->Detonate();
+					}
+				}
+			}
+
+		// here we assume the entity got NULLed on the same frame
+		else if (wasNPC) {
+			ExplosionCreate(hitEnt->GetAbsOrigin() + Vector(0, 0, 16), QAngle(90, 0, 0), GetOwner(), 80.0f, 250,
+				SF_ENVEXPLOSION_NODLIGHTS | SF_ENVEXPLOSION_NOSOUND | SF_ENVEXPLOSION_NOFIREBALLSMOKE | SF_ENVEXPLOSION_NOCLAMPMAX, 1300.0f);
+		}
+	}
+	else {
+		if (!foundExplosive) {
+			// try to explode grenade that could not be reached by the fatass bounding box
+			foundExplosive = gEntList.FindEntityByClassnameNearest("npc_grenade_frag", laserTrace.endpos, REVOLVER_ALT_SWEEP * RATIO_APPROX);
+#ifdef DEBUG
+			debugoverlay->AddBoxOverlay(laserTrace.endpos, Vector(1, 1, 1)* REVOLVER_ALT_SWEEP* RATIO_APPROX / -2, Vector(1, 1, 1)* REVOLVER_ALT_SWEEP* RATIO_APPROX / 2, QAngle(0, 0, 0), 200, 200, 20, 255, 10);
+#endif // DEBUG
+
+			
+			if (foundExplosive) {
+				if (CBaseGrenade* cBGp = dynamic_cast<CBaseGrenade*>(foundExplosive)) {
+					foundExplosive = laserTrace.m_pEnt;
+					ExtraBoomAt(laserTrace.m_pEnt);
+					cBGp->Detonate();
+				}
+			}
+			else {
+				foundExplosive = gEntList.FindEntityByClassnameNearest("grenade_ar2", laserTrace.endpos, REVOLVER_ALT_SWEEP * RATIO_APPROX);
+				if (foundExplosive) {
+					if (CGrenadeAR2* cBGp = dynamic_cast<CGrenadeAR2*>(foundExplosive)) {
+						foundExplosive = laserTrace.m_pEnt;
+						ExtraBoomAt(laserTrace.m_pEnt);
+						cBGp->Detonate();
+					}
+				}
+			}
+		}
+	}
+
+	if (laserTrace2.DidHitNonWorldEntity()) {
+		CBaseEntity* hitEnt = laserTrace2.m_pEnt;
+
+		if (hitEnt)
+			TestEntityForDet(hitEnt, firstTraceNPC, foundExplosive);
+	}
+
+	m_iSecondaryAttacks++;
+	gamestats->Event_WeaponFired(pPlayer, true, GetClassname());
+	SendWeaponAnim(ACT_VM_PRIMARYATTACK);
+	pPlayer->SetAnimation(PLAYER_ATTACK1);
+	m_iClip1--;
+	m_flNextPrimaryAttack = gpGlobals->curtime + GetFireRate();
+	m_flNextSecondaryAttack = gpGlobals->curtime + GetFireRate() * 3;
+	m_flRemainingRecharge = gpGlobals->curtime - m_flNextSecondaryAttack;
+	/*
 	m_iPrimaryAttacks++;
 	gamestats->Event_WeaponFired(pPlayer, true, GetClassname());
 
@@ -452,9 +639,10 @@ void CWeapon357::SecondaryAttack(void)
 	angles.y += random->RandomInt(-1, 1);
 	angles.z = 0;
 
-	pPlayer->SnapEyeAngles(angles);
+	
 
 	pPlayer->ViewPunch(QAngle(-5, random->RandomFloat(-1, 1), 0));
+	*/
 
 	CSoundEnt::InsertSound(SOUND_COMBAT, GetAbsOrigin(), 600, 0.2, GetOwner());
 
@@ -463,4 +651,49 @@ void CWeapon357::SecondaryAttack(void)
 		// HEV suit - indicate out of ammo condition
 		pPlayer->SetSuitUpdate("!HEV_AMO0", FALSE, 0);
 	}
+
+}
+
+void CWeapon357::TestEntityForDet(CBaseEntity* hitEnt, bool& firstTraceNPC, CBaseEntity* foundExplosive)
+{
+	{
+		if (hitEnt->GetFlags() & FL_NPC) {
+			firstTraceNPC = true;
+			CAI_BaseNPC* bNPCP = dynamic_cast<CAI_BaseNPC*>(hitEnt);
+			if (bNPCP) {
+				if (!bNPCP->IsAlive()) {
+					ExplosionCreate(hitEnt->GetAbsOrigin() + Vector(0, 0, 16), QAngle(90, 0, 0), GetOwner(), 80.0f, 250,
+						SF_ENVEXPLOSION_NODLIGHTS | SF_ENVEXPLOSION_NOSOUND | SF_ENVEXPLOSION_NOFIREBALLSMOKE | SF_ENVEXPLOSION_NOCLAMPMAX, 1300.0f);
+				}
+			}
+		}
+		else 
+		if (!foundExplosive) {
+			if (CBaseGrenade* cBGp = dynamic_cast<CBaseGrenade*>(hitEnt)) {
+				foundExplosive = hitEnt;
+				ExtraBoomAt(hitEnt);
+				cBGp->Detonate();
+			}
+			else if (CBreakableProp* cBPp = dynamic_cast<CBreakableProp*>(hitEnt)) {
+
+				float rad = cBPp->GetExplosiveRadius();
+				float dmg = cBPp->GetExplosiveDamage();
+	#ifdef DEBUG
+				DevMsg("REVOLVER FOUND BREAKABLE PROP WITH EXPLOSIVE RADIUS %f AND DMG %f\n", rad, dmg);
+				if (rad > 0.0 && dmg > 0.0 && (cBPp->m_takedamage == DAMAGE_YES)) {
+					foundExplosive = hitEnt;
+					ExtraBoomAt(hitEnt);
+				}
+	#endif // DEBUG
+
+			}
+		}
+	}
+}
+
+void CWeapon357::ExtraBoomAt(CBaseEntity* hitEnt)
+{
+	ExplosionCreate(hitEnt->GetAbsOrigin(), QAngle(90, 0, 0), GetOwner(), 150.0f, 450,
+		SF_ENVEXPLOSION_NODLIGHTS | SF_ENVEXPLOSION_NOSOUND | SF_ENVEXPLOSION_NOFIREBALLSMOKE | SF_ENVEXPLOSION_NOCLAMPMAX, 1300.0f);
+	DispatchParticleEffect(PARTICLENUKE, hitEnt->GetAbsOrigin(), QAngle(90, 0, 0));
 }
