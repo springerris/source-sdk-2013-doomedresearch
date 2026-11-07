@@ -23,6 +23,9 @@
 #define SF_ENVEXPLOSION_NOCLAMPMAX	0x00001000 // don't clamp the maximum size of the fireball sprite
 #define SF_ENVEXPLOSION_SURFACEONLY	0x00002000 // don't damage the player if he's underwater.
 #define SF_ENVEXPLOSION_GENERIC_DAMAGE	0x00004000 // don't do BLAST damage
+#define SF_ENVEXPLOSION_NOFALLOFF	0x00008000 // no damage falloff from radius
+#define SF_ENVEXPLOSION_PLAYERMERCY	0x00010000 // can't damage player more than half of max health
+
 
 extern short	g_sModelIndexFireball;
 extern short	g_sModelIndexSmoke;

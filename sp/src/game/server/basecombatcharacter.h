@@ -869,7 +869,7 @@ inline void	CBaseCombatCharacter::PowerupThink( int iPowerup )						{ return; }
 
 EXTERN_SEND_TABLE(DT_BaseCombatCharacter);
 
-void RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore );
+void RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore,bool bNoFallOff = false, bool bPlayerMercy = false);
 
 //-----------------------------------------------------------------------------
 // Purpose: 

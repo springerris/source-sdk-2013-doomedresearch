@@ -355,7 +355,7 @@ void CEnvExplosion::InputExplode( inputdata_t &inputdata )
 			info.SetDamageForce( Vector( m_flDamageForce, 0, 0 ) );
 		}
 
-		RadiusDamage( info, GetAbsOrigin(), iRadius, m_iClassIgnore, m_hEntityIgnore.Get() );
+		RadiusDamage( info, GetAbsOrigin(), iRadius, m_iClassIgnore, m_hEntityIgnore.Get(), HasSpawnFlags(SF_ENVEXPLOSION_NOFALLOFF), HasSpawnFlags(SF_ENVEXPLOSION_PLAYERMERCY));
 	}
 
 	SetThink( &CEnvExplosion::Smoke );

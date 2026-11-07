@@ -382,7 +382,9 @@ bool IsExplosionTraceBlocked( trace_t *ptr )
 // Default implementation of radius damage
 //-----------------------------------------------------------------------------
 #define ROBUST_RADIUS_PROBE_DIST 16.0f // If a solid surface blocks the explosion, this is how far to creep along the surface looking for another way to the target
-void CGameRules::RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrcIn, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore )
+
+// DR: bNoFallOff - no damage falloff over distance. bPlayerMercy - explosion can deal AT MOST 50% of player's current max health
+void CGameRules::RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrcIn, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore, bool bNoFallOff, bool bPlayerMercy )
 {
 	const int MASK_RADIUS_DAMAGE = MASK_SHOT&(~CONTENTS_HITBOX);
 	CBaseEntity *pEntity = NULL;
@@ -536,8 +538,21 @@ void CGameRules::RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc
 			}
 		}
 		// decrease damage for an ent that's farther from the bomb.
-		flAdjustedDamage = ( vecSrc - tr.endpos ).Length() * falloff;
-		flAdjustedDamage = info.GetDamage() - flAdjustedDamage;
+		if (!bNoFallOff) {
+			flAdjustedDamage = (vecSrc - tr.endpos).Length() * falloff;
+			flAdjustedDamage = info.GetDamage() - flAdjustedDamage;
+		}
+		else {
+			flAdjustedDamage = info.GetDamage();
+		}
+
+		if (bPlayerMercy) {
+			if (pEntity->IsPlayer()) {
+				if (flAdjustedDamage > pEntity->GetMaxHealth() / 2) {
+					flAdjustedDamage = pEntity->GetMaxHealth() / 2;
+				}
+			}
+		}
 
 		if ( flAdjustedDamage <= 0 )
 		{
@@ -590,7 +605,7 @@ void CGameRules::RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc
 		}
 		else
 		{
-			pEntity->TakeDamage( adjustedInfo );
+				pEntity->TakeDamage( adjustedInfo );
 		}
 
 		// Now hit all triggers along the way that respond to damage... 
@@ -1012,3 +1027,5 @@ void CGameRules::ClientCommandKeyValues(edict_t* pEntity, KeyValues* pKeyValues)
 #endif // GAME_DLL
 }
 #endif // MAPBASE
+
+
